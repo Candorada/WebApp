@@ -1,24 +1,49 @@
 import express from 'express';
-import pkg from 'pg';
-const { Pool } = pkg;
 const app = express();
-// --- Config ---
-const PORT = process.env.PORT || 3000;
-const DATABASE_URL = process.env.DATABASE_URL || ''; // empty = in-memory fallback
 app.use(express.json());
 app.use(express.static('public'));
+// Get the client
+import mysql from 'mysql2/promise';
+// --- Config ---
+const PORT = process.env.PORT || 3000;
+const env = process.env
+const DATABASE_CREDENTIALS = {
+  "host": process.env.DB_HOST  || '',
+  "user": process.env.DB_USER  || '',
+  "password": env.DB_PASSWORD  || '',
+  "database": env.DB_DATABASE  || ''
+}; // empty = in-memory fallback
+
+console.log('DB:', DATABASE_CREDENTIALS);
 // --- In-memory fallback (if no DB yet) ---
 let mem = { pageViews: 0, writes: 0 };
 // --- Optional Postgres pool ---
 let pool = null;
-if (DATABASE_URL) {
-  pool = new Pool({ connectionString: DATABASE_URL, ssl: sslOption(DATABASE_URL) });
+if (DATABASE_CREDENTIALS.database) {
+  var connection = mysql.createConnection({
+    host     : DATABASE_CREDENTIALS.host,
+    user     : DATABASE_CREDENTIALS.user,
+    password : DATABASE_CREDENTIALS.password,
+    database : DATABASE_CREDENTIALS.database
+  });
+  pool = await connection;
   (async () => {
     try {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS pageviews(id SERIAL PRIMARY KEY, at TIMESTAMP DEFAULT NOW());
-        CREATE TABLE IF NOT EXISTS writes(id SERIAL PRIMARY KEY, at TIMESTAMP DEFAULT NOW());
-      `);
+await pool.query(`
+    CREATE TABLE IF NOT EXISTS pageviews (
+        id INT NOT NULL AUTO_INCREMENT, 
+        at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id)
+    );
+`);
+
+await pool.query(`
+    CREATE TABLE IF NOT EXISTS writes (
+        id INT NOT NULL AUTO_INCREMENT, 
+        at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id)
+    );
+`);
       console.log('DB ready');
     } catch (e) {
       console.error('DB init error:', e.message);
@@ -49,8 +74,9 @@ app.get('/api/time', (_req, res) => {
 app.post('/api/demo-write', async (_req, res) => {
   try {
     if (pool) {
-      await pool.query('INSERT INTO writes DEFAULT VALUES;');
-      const total = (await pool.query('SELECT COUNT(*)::int AS n FROM writes')).rows[0].n;
+      await pool.query('INSERT INTO writes (id) VALUES (NULL)');
+      const [rows] = await pool.query('SELECT COUNT(*) AS n FROM writes');
+      const total = rows[0].n;
       return res.json({ ok: true, total });
     } else {
       mem.writes++;
@@ -64,8 +90,11 @@ app.post('/api/demo-write', async (_req, res) => {
 app.get('/api/metrics', async (_req, res) => {
   try {
     if (pool) {
-      const pv = (await pool.query('SELECT COUNT(*)::int AS n FROM pageviews')).rows[0].n;
-      const wr = (await pool.query('SELECT COUNT(*)::int AS n FROM writes')).rows[0].n;
+      const [pvRows] = await pool.query('SELECT COUNT(*) AS n FROM pageviews');
+      const pv = pvRows[0].n;
+
+      const [wrRows] = await pool.query('SELECT COUNT(*) AS n FROM writes');
+      const wr = wrRows[0].n;
       res.json({ pageViews: pv, writes: wr, db: true });
     } else {
       res.json({ pageViews: mem.pageViews, writes: mem.writes, db: false });
