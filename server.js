@@ -8,12 +8,6 @@ import mysql from 'mysql2/promise';
 const PORT = process.env.PORT || 3000;
 const env = process.env
 
-import fs from "fs";
-
-if (fs.existsSync(".env")) {
-  const dotenv = await import("dotenv");
-  dotenv.config();
-}
 const DATABASE_CREDENTIALS = {
   "host": process.env.DB_HOST  || '',
   "user": process.env.DB_USER  || '',
