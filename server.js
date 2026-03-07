@@ -27,13 +27,16 @@ let mem = { pageViews: 0, writes: 0 };
 // --- Optional Postgres pool ---
 let pool = null;
 if (DATABASE_CREDENTIALS.database) {
-  var connection = mysql.createConnection({
-    host     : DATABASE_CREDENTIALS.host,
-    user     : DATABASE_CREDENTIALS.user,
-    password : DATABASE_CREDENTIALS.password,
-    database : DATABASE_CREDENTIALS.database
+  pool = mysql.createPool({
+    host: DATABASE_CREDENTIALS.host,
+    user: DATABASE_CREDENTIALS.user,
+    password: DATABASE_CREDENTIALS.password,
+    database: DATABASE_CREDENTIALS.database,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
   });
-  pool = await connection;
+
   (async () => {
     try {
 await pool.query(`
@@ -58,16 +61,10 @@ await pool.query(`
     }
   })();
 }
-function sslOption(cs) {
-  // Some hosted Postgres providers require SSL
-  return /amazonaws|render|railway|supabase|azure|gcp|neon|timescale|heroku/i.test(cs)
-    ? { rejectUnauthorized: false }
-    : undefined;
-}
 // --- Count a page view on homepage load ---
 app.get('/', async (_req, _res, next) => {
   try {
-    if (pool) await pool.query('INSERT INTO pageviews DEFAULT VALUES;');
+    if (pool) await pool.query('INSERT INTO pageviews (id) VALUES (NULL)');
     else mem.pageViews++;
   } catch {}
   next();
