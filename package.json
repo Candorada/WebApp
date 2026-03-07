@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.env server.js"
+    "start": "node server.js"
   },
   "dependencies": {
+    "dotenv": "^17.3.1",
     "express": "^4.19.2",
     "mysql2": "^3.19.0"
   }
