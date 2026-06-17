@@ -1,5 +1,6 @@
 import express from 'express';
 import 'dotenv/config';
+import fs from 'fs';
 const app = express();
 app.use(express.json());
 app.use(express.static('public'));
@@ -102,6 +103,19 @@ app.get('/api/metrics', async (_req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+app.get(/scripts\/(.*)/, async (req, res) => {
+  let script = await fs.readFileSync(process.cwd() + '/scripts/'+req.params[0], 'utf8')
+  let html = await fs.readFileSync(process.cwd() + '/public/script.html', 'utf8')
+  let retval = html.replace('<!--[Script Here]-->', script.replaceAll('<','&lt;').replaceAll('>','&gt;'))
+  script = null
+  html = null
+  res.send(retval)
+});
+app.get(/public\/(.*)/, async (req, res) => {
+  res.sendFile(process.cwd() + '/public/'+req.params[0])
+});
+
 app.listen(PORT, () => console.log(`Listening on ${PORT}`));
 
 
