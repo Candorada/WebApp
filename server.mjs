@@ -10,9 +10,9 @@ const url = `http://${host}:${port}`;
 const source = 'https://fortnite-api.com/v2/shop?language=en';
 const files = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
-  ['/style.css', ['style.css', 'text/css; charset=utf-8']],
-  ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
-  ['/shop.js', ['shop.js', 'text/javascript; charset=utf-8']],
+  ['/public/style.css', ['style.css', 'text/css; charset=utf-8']],
+  ['/public/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/public/shop.js', ['shop.js', 'text/javascript; charset=utf-8']],
 ]);
 let cached;
 let cacheUntil = 0;
