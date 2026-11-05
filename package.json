@@ -1,15 +1,14 @@
 {
-  "name": "vps-fetch-write-demo",
+  "name": "fortnite-shop-value",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
+  "main": "server.js",
+  "description": "Current Fortnite item shop value with item-type toggles.",
+  "engines": { "node": ">=22" },
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
-  },
-  "dependencies": {
-    "dotenv": "^17.3.1",
-    "express": "^4.19.2",
-    "mysql2": "^3.19.0",
-    "nodemon": "^3.1.14"
+    "start:desktop": "node server.mjs --open",
+    "test": "node --test"
   }
 }

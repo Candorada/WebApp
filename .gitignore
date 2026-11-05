@@ -1,8 +1,12 @@
 # Node modules
 node_modules/
 
-# Package lock file
-package-lock.json
-
 # env file
 .env
+.env.*
+!.env.example
+
+# Local previews and deployment packages
+preview.png
+bundle-preview.png
+*.zip
