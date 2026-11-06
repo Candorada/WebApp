@@ -1,5 +1,6 @@
 import { navigateDate, visibleDate, selectedTypes, setAvailableTypes, selectCategory } from './app.js';
 import { typeLabel } from './shop.js';
+import { timeTicks } from './history-axis.js';
 
 const $ = id => document.getElementById(id);
 const number = new Intl.NumberFormat('en-US');
@@ -73,16 +74,17 @@ function draw() {
   const partial = visible.filter(point => unpriced(point));
   $('history-status').textContent = `${number.format(points.length)} selectable dates · ${number.format(visible.length - partial.length)} totals with all prices · ${number.format(partial.length)} known-price subtotals in this view · ${points[0].date} onwards${archiveGapCount ? ` · ${archiveGapCount} unavailable source records` : ''}`;
   const width = Math.max(320, chart.clientWidth || 900);
-  const height = 280;
+  const height = 320;
   if (!visible.length) { chart.replaceChildren(element('text', { x: 20, y: 80, class: 'history-axis' }, 'No complete totals for this range.')); chartBounds = null; return; }
-  const padding = { left: 59, right: 15, top: 21, bottom: 35 };
+  const padding = { left: 59, right: 15, top: 21, bottom: 73 };
   const first = timestamp(visible[0].date);
   const last = timestamp(visible.at(-1).date);
   const span = Math.max(86400000, last - first);
   const maximum = Math.max(1, ...visible.map(point => point[metric()])) * 1.08;
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const x = point => visible.length === 1 ? padding.left + plotWidth / 2 : padding.left + (timestamp(point.date) - first) / span * plotWidth;
+  const timeX = time => visible.length === 1 ? padding.left + plotWidth / 2 : padding.left + (time - first) / span * plotWidth;
+  const x = point => timeX(timestamp(point.date));
   const y = point => padding.top + plotHeight * (1 - (point[metric()] ?? 0) / maximum);
   chartBounds = { first, last, left: padding.left, plotWidth, span, width };
   chart.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -92,6 +94,21 @@ function draw() {
     const position = padding.top + plotHeight * (1 - i / 3);
     chart.append(element('line', { x1: padding.left, x2: width - padding.right, y1: position, y2: position, class: 'history-grid' }));
     chart.append(element('text', { x: padding.left - 10, y: position + 4, 'text-anchor': 'end', class: 'history-axis' }, compact.format(value)));
+  }
+  const baseline = height - padding.bottom;
+  const ticks = timeTicks(first, last, $('history-range').value);
+  const dense = plotWidth / ticks.length < (days <= 31 ? 19 : 42);
+  for (const tick of ticks) {
+    const position = timeX(tick.time);
+    const labelPosition = timeX(tick.labelTime);
+    const labelY = baseline + 19;
+    chart.append(element('line', { x1: position, x2: position, y1: padding.top, y2: baseline, class: 'history-time-grid' }));
+    chart.append(element('line', { x1: position, x2: position, y1: baseline, y2: baseline + 5, class: 'history-time-tick' }));
+    chart.append(element('text', {
+      x: labelPosition, y: labelY, class: `history-axis history-time-label${dense ? ' history-time-dense' : ''}`,
+      'text-anchor': dense ? 'end' : 'middle',
+      ...(dense ? { transform: `rotate(-55 ${labelPosition} ${labelY})` } : {}),
+    }, tick.label));
   }
   let path = '';
   let previous;
@@ -106,12 +123,15 @@ function draw() {
     previous = point;
   }
   chart.append(element('path', { d: path, class: 'history-line' }));
-  chart.append(element('text', { x: padding.left, y: height - 8, class: 'history-axis' }, visible[0].date));
-  chart.append(element('text', { x: width - padding.right, y: height - 8, 'text-anchor': 'end', class: 'history-axis' }, visible.at(-1).date));
   const selected = visible.find(point => point.date === selectedDate);
   if (selected) {
-    chart.append(element('line', { x1: x(selected), x2: x(selected), y1: padding.top, y2: height - padding.bottom, class: 'history-guide' }));
+    const labelWidth = 108;
+    const labelX = Math.max(padding.left + labelWidth / 2, Math.min(width - padding.right - labelWidth / 2, x(selected)));
+    const labelY = height - 8;
+    chart.append(element('line', { x1: x(selected), x2: x(selected), y1: padding.top, y2: labelY - 16, class: 'history-guide' }));
     chart.append(element('circle', { cx: x(selected), cy: y(selected), r: 5, class: unpriced(selected) ? 'history-marker history-fallback' : 'history-marker' }));
+    chart.append(element('rect', { x: labelX - labelWidth / 2, y: labelY - 16, width: labelWidth, height: 22, rx: 4, class: 'history-date-badge' }));
+    chart.append(element('text', { x: labelX, y: labelY - 1, 'text-anchor': 'middle', class: 'history-selected-label' }, selectedDate));
   }
 }
 

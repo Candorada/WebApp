@@ -22,6 +22,7 @@ const files = new Map([
   ['/public/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/public/shop.js', ['shop.js', 'text/javascript; charset=utf-8']],
   ['/public/history.js', ['history.js', 'text/javascript; charset=utf-8']],
+  ['/public/history-axis.js', ['history-axis.js', 'text/javascript; charset=utf-8']],
   ['/public/date-route.js', ['date-route.js', 'text/javascript; charset=utf-8']],
 ]);
 let history;
