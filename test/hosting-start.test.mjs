@@ -32,6 +32,22 @@ test('the app starts through the hosting CommonJS loader and serves its historic
     assert.ok(health.historyDays > 3000);
     const archive = await (await fetch(`http://127.0.0.1:${port}/api/history/2017-10-26`)).json();
     assert.equal(archive.value, 5600);
+    assert.equal(archive.snapshot.offers.length, 6);
+    assert.ok(archive.snapshot.offers.some(offer => offer.name === 'Ghoul Trooper' && offer.types.includes('outfit')));
+    const headers = await fetch(`http://127.0.0.1:${port}/api/history/2017-10-26`);
+    assert.match(headers.headers.get('cache-control'), /max-age=86400/);
+    const unchanged = await fetch(headers.url, { headers: { 'If-None-Match': headers.headers.get('etag') } });
+    assert.equal(unchanged.status, 304);
+    const page = await fetch(`http://127.0.0.1:${port}/1508976000`);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /id="hero-day"/);
+    for (const path of ['/bad-date', '/1', '/99999999999', '/1508976000000']) {
+      const invalid = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' });
+      assert.equal(invalid.status, 302);
+      assert.equal(invalid.headers.get('location'), '/');
+    }
+    const canonical = await fetch(`http://127.0.0.1:${port}/1508976001`, { redirect: 'manual' });
+    assert.equal(canonical.headers.get('location'), '/1508976000');
   } finally {
     if (child.exitCode === null) {
       child.kill();

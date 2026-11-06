@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
-import { normalizeArchiveShop } from '../history-source.mjs';
+import { normalizeArchiveShop, archiveSnapshot } from '../history-source.mjs';
 import { HistoryStore, captureDue, validDate } from '../history-store.mjs';
+import { dateFromPath, datePath } from '../public/date-route.js';
+import { selectOffers } from '../public/shop.js';
 
 const cosmetic = (id, type = 'Outfit') => ({ itemKey: `fn:item:${id}`, name: id, type });
 const offer = (id, price, extra = {}) => ({ id, ...cosmetic(id), price: { amount: price, currency: 'V-Bucks' }, contents: [], ...extra });
@@ -91,4 +93,28 @@ test('dates reject impossible calendar days', () => {
   assert.equal(validDate('2017-10-26'), true);
   assert.equal(validDate('../secret'), false);
   assert.equal(captureDue(null, new Date('2026-11-06T00:00:00Z')), true);
+});
+
+test('Unix-second routes use UTC days and reject malformed paths and impossible dates', () => {
+  assert.equal(datePath('2017-10-26'), '/1508976000');
+  assert.equal(dateFromPath('/1508976000'), '2017-10-26');
+  assert.equal(dateFromPath('/1509062399'), '2017-10-26');
+  assert.equal(dateFromPath('/'), null);
+  for (const path of ['/bad', '/NaN', '/1508976000000', '/1508976000/extra', '/-1', '/1.5']) assert.equal(dateFromPath(path), undefined);
+  assert.equal(datePath('2026-02-31'), '/');
+});
+
+test('archived lineups retain missing prices and can recalculate complete category selections', () => {
+  const shop = archiveSnapshot(archive([
+    offer('unknown', null), offer('axe', 800, { type: 'Pickaxe' }),
+    offer('pack', 2000, { type: 'Bundle', contents: [cosmetic('emote', 'Emote'), cosmetic('glider', 'Glider')] }),
+  ]), '2017-10-26');
+  assert.equal(shop.offers.length, 3);
+  assert.equal(shop.offers[0].price, null);
+  assert.equal(selectOffers(shop.offers).totals.value, null);
+  assert.equal(selectOffers(shop.offers, new Set(['pickaxe'])).totals.value, 800);
+  assert.equal(selectOffers(shop.offers, new Set(['emote'])).totals.value, 2000);
+  assert.equal(selectOffers(shop.offers, new Set()).totals.value, 0);
+  const missingContents = archiveSnapshot(archive([offer('pack', 2000, { type: 'Bundle' })]), '2017-10-26');
+  assert.equal(selectOffers(missingContents.offers).totals.value, null);
 });

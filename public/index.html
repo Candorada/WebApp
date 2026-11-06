@@ -14,11 +14,11 @@
   <main>
     <header>
       <a class="brand" href="/" aria-label="Fortnite Shop Value home"><span class="brand-icon">V</span> SHOP<span class="muted">/</span>VALUE</a>
-      <div class="header-actions"><span class="live"><span></span> LIVE SHOP</span><button id="refresh" class="button" type="button">↻ Refresh</button></div>
+      <div class="header-actions"><a id="live-shop" class="text-button" href="/" hidden>Back to live shop</a><span class="live"><span></span> <span id="shop-mode">LIVE SHOP</span></span><button id="refresh" class="button" type="button">↻ Refresh</button></div>
     </header>
     <div id="notice" role="status" hidden></div>
     <section class="hero" aria-labelledby="hero-title">
-      <div class="intro"><p class="eyebrow">FORTNITE ITEM SHOP</p><h1 id="hero-title">Today's shop.<br><span>Your total.</span></h1><p class="description">See what the shop adds up to.<br>Toggle item types to make it yours.</p><p id="shop-date" class="date">Connecting to the current shop…</p></div>
+      <div class="intro"><p class="eyebrow">FORTNITE ITEM SHOP</p><h1 id="hero-title"><span id="hero-day">Today's shop.</span><br><span>Your total.</span></h1><p class="description">See what the shop adds up to.<br>Toggle item types to make it yours.</p><p id="shop-date" class="date">Connecting to the current shop…</p></div>
       <div class="total-panel">
         <div class="panel-top"><span id="total-label">TOTAL SHOP VALUE</span><span class="coin">V</span></div>
         <div id="total" class="total" aria-live="polite">—</div>
@@ -29,7 +29,7 @@
     </section>
     <section class="history-panel" aria-labelledby="history-heading">
       <div class="section-heading history-heading"><div><p class="eyebrow">THE SHOP OVER TIME</p><h2 id="history-heading">Price history</h2></div><div class="history-controls"><label>Price total<select id="history-metric" aria-label="Historical price calculation"><option value="listedValue">All listed prices</option><option value="value">Bundle-adjusted</option></select></label><label>View<select id="history-range" aria-label="History chart range"><option value="all">All history</option><option value="365">Last year</option><option value="90">Last 90 days</option></select></label><label>Shop date · UTC<input id="history-date" type="date" aria-label="Select a historical shop date" disabled></label></div></div>
-      <p class="history-caption">Click the graph or choose a date. Bundle-adjusted totals remove covered offers; all listed prices include overlapping listings. Missing historical prices or bundle contents create gaps. Today's type filters apply to the lineup below.</p>
+      <p class="history-caption">Click the graph or choose a date to load that day's shop. The buttons below filter its items and recalculate your total. The graph shows full-shop totals: bundle-adjusted removes covered offers; all listed prices includes overlapping listings. Missing historical data creates gaps.</p>
       <p id="history-status" class="history-status" role="status">Loading historical shop prices…</p>
       <svg id="history-chart" class="history-chart" role="img" aria-label="Shop value in V-Bucks over time. Click to select a day, or use the left and right arrow keys." tabindex="0" hidden></svg>
       <div class="history-selection"><div><span id="history-selected-date" class="eyebrow">SELECTED DAY</span><div class="history-price"><strong id="history-value">—</strong><span>V-BUCKS</span></div></div><div class="history-detail"><p id="history-detail">Select a date to see its total.</p><a id="history-source" href="https://itemshop.gg/fortnite/history" target="_blank" rel="noreferrer" hidden>Verify source shop ↗</a></div></div>

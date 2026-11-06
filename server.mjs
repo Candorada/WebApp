@@ -5,10 +5,11 @@ import { spawn } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { normalizeShop } from './public/shop.js';
 import { HistoryStore, validDate, captureDue } from './history-store.mjs';
+import { dateFromPath, datePath } from './public/date-route.js';
 
 const host = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 const port = Number(process.env.PORT || 3000);
@@ -21,6 +22,7 @@ const files = new Map([
   ['/public/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/public/shop.js', ['shop.js', 'text/javascript; charset=utf-8']],
   ['/public/history.js', ['history.js', 'text/javascript; charset=utf-8']],
+  ['/public/date-route.js', ['date-route.js', 'text/javascript; charset=utf-8']],
 ]);
 let history;
 const hostingDomainRoot = fileURLToPath(import.meta.url).match(/^(\/home\/[^/]+\/domains\/[^/]+)\//)?.[1];
@@ -103,8 +105,26 @@ const server = createServer(async (request, response) => {
   if (pathname.startsWith('/api/history/')) {
     const date = pathname.slice('/api/history/'.length);
     if (!validDate(date)) { response.writeHead(400).end('Invalid date'); return; }
+    if (history && date === new Date().toISOString().slice(0, 10) && !history.get(date)) {
+      try { await getShop(); } catch { /* A missing current capture is reported below. */ }
+    }
     const row = history?.get(date);
-    response.writeHead(row ? 200 : 404, { 'Content-Type': 'application/json' }).end(JSON.stringify(row ? { ...row, snapshot: history.snapshot(date) } : { error: 'No complete price record for this date.' }));
+    if (!row) { response.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'No archived shop for this date.' })); return; }
+    try {
+      const snapshot = history.snapshot(date) || JSON.parse(gunzipSync(await readFile(new URL(`./data/history-shops/${date}.json.gz`, import.meta.url))));
+      const body = Buffer.from(JSON.stringify({ ...row, snapshot }));
+      const etag = 'W/"' + createHash('sha256').update(body).digest('hex') + '"';
+      response.setHeader('Cache-Control', `private, max-age=${row.finalized ? 86400 : 60}, must-revalidate`);
+      response.setHeader('ETag', etag);
+      response.setHeader('Vary', 'Accept-Encoding');
+      if (request.headers['if-none-match'] === etag) { response.writeHead(304).end(); return; }
+      const compressed = /\bgzip\b/.test(request.headers['accept-encoding'] || '');
+      if (compressed) response.setHeader('Content-Encoding', 'gzip');
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }).end(compressed ? gzipSync(body) : body);
+    } catch (error) {
+      console.error('Could not read historical shop:', error.message);
+      response.writeHead(503, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'This archived item list is temporarily unavailable. Try Refresh again.' }));
+    }
     return;
   }
   if (pathname === '/api/shop') {
@@ -119,8 +139,15 @@ const server = createServer(async (request, response) => {
     }
     return;
   }
-  const file = files.get(pathname);
-  if (!file) { response.writeHead(404).end('Not found'); return; }
+  let file = files.get(pathname);
+  if (!file) {
+    if (pathname.startsWith('/api/') || pathname.startsWith('/public/')) { response.writeHead(404).end('Not found'); return; }
+    const date = dateFromPath(pathname);
+    const today = new Date().toISOString().slice(0, 10);
+    if (!date || (!history?.get(date) && date !== today)) { response.writeHead(302, { Location: '/' }).end(); return; }
+    if (pathname !== datePath(date)) { response.writeHead(302, { Location: datePath(date) }).end(); return; }
+    file = files.get('/');
+  }
   try {
     const body = await readFile(new URL(`./public/${file[0]}`, import.meta.url));
     response.writeHead(200, { 'Content-Type': file[1] }).end(body);

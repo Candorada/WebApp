@@ -15,7 +15,7 @@ export function selectOffers(offers, selectedTypes) {
   const coveredBy = new Map();
   const retainedBundles = [];
   const bundles = selected.filter(offer => offer.isBundle && offer.itemIds.length).sort((a, b) =>
-    b.itemIds.length - a.itemIds.length || a.price - b.price || a.id.localeCompare(b.id));
+    b.itemIds.length - a.itemIds.length || (a.price ?? Infinity) - (b.price ?? Infinity) || a.id.localeCompare(b.id));
   for (const bundle of bundles) {
     const parent = retainedBundles.find(other => bundle.itemIds.every(id => other.itemIds.includes(id)));
     if (parent) coveredBy.set(bundle.id, parent);
@@ -33,6 +33,10 @@ export function selectOffers(offers, selectedTypes) {
     sum.count++;
     return sum;
   }, { value: 0, savings: 0, count: 0 });
+  if (counted.some(offer => offer.price === null || offer.coverageUnknown)) {
+    summary.value = null;
+    summary.savings = null;
+  }
   return { selected, counted, coveredBy, totals: summary };
 }
 

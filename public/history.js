@@ -1,3 +1,5 @@
+import { navigateDate, visibleDate } from './app.js';
+
 const $ = id => document.getElementById(id);
 const number = new Intl.NumberFormat('en-US');
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
@@ -95,21 +97,25 @@ $('history-chart').addEventListener('click', event => {
   const position = (event.clientX - rect.left) * chartBounds.width / rect.width;
   const target = chartBounds.first + Math.max(0, Math.min(1, (position - chartBounds.left) / chartBounds.plotWidth)) * chartBounds.span;
   const nearest = visible.reduce((best, point) => Math.abs(timestamp(point.date) - target) < Math.abs(timestamp(best.date) - target) ? point : best);
-  selectDate(nearest.date);
+  navigateDate(nearest.date);
 });
 $('history-chart').addEventListener('keydown', event => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !visible.length) return;
   event.preventDefault();
   const current = Math.max(0, visible.findIndex(point => point.date === selectedDate));
   const index = event.key === 'Home' ? 0 : event.key === 'End' ? visible.length - 1 : Math.max(0, Math.min(visible.length - 1, current + (event.key === 'ArrowLeft' ? -1 : 1)));
-  selectDate(visible[index].date);
+  navigateDate(visible[index].date);
 });
 $('history-date').addEventListener('change', () => {
-  if ($('history-date').value && $('history-date').validity.valid) selectDate($('history-date').value);
+  navigateDate($('history-date').value);
 });
 $('history-range').addEventListener('change', draw);
 $('history-metric').addEventListener('change', () => { if (selectedDate) selectDate(selectedDate); });
 new ResizeObserver(draw).observe($('history-chart'));
+document.addEventListener('shop:navigation', event => {
+  const date = event.detail.date || points.at(-1)?.date;
+  if (date) selectDate(date);
+});
 
 async function loadHistory() {
   try {
@@ -124,7 +130,7 @@ async function loadHistory() {
     $('history-date').disabled = false;
     $('history-date').min = data.earliest;
     $('history-date').max = data.latest;
-    selectDate(selectedDate || data.latest);
+    selectDate(visibleDate() || data.latest);
   } catch (error) { $('history-status').textContent = `History unavailable: ${error.message}`; }
 }
 loadHistory();

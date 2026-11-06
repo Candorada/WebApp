@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { createInterface } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
-import { normalizeArchiveShop } from '../history-source.mjs';
+import { normalizeArchiveShop, archiveSnapshot } from '../history-source.mjs';
 
 const cachedOnly = process.argv.includes('--cached');
 let key = process.env.ITEMSHOP_API_KEY;
@@ -18,6 +18,8 @@ if (!cachedOnly && !key?.trim()) throw new Error('A history API key is required.
 const headers = cachedOnly ? undefined : { Authorization: `Bearer ${key.trim()}`, 'User-Agent': 'FortniteShopValue/1.0 (https://justasite.xyz)' };
 const root = join(homedir(), '.fortnite-shop-value', 'source-archive');
 await mkdir(root, { recursive: true });
+const snapshots = new URL('../data/history-shops/', import.meta.url);
+await mkdir(snapshots, { recursive: true });
 let nextRequest = 0;
 async function request(path) {
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -55,6 +57,7 @@ async function worker() {
         await writeFile(file, gzipSync(JSON.stringify(payload)));
       }
       rows.push(normalizeArchiveShop(payload, date));
+      await writeFile(new URL(date + '.json.gz', snapshots), gzipSync(JSON.stringify(archiveSnapshot(payload, date))));
     } catch (error) { gaps.push({ date, reason: error.message }); }
     completed++;
     if (completed % 100 === 0 || completed === dates.length) console.log(JSON.stringify({ completed, total: dates.length, imported: rows.length, gaps: gaps.length }));

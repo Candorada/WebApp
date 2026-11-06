@@ -1,7 +1,8 @@
 # Fortnite Shop Value
 
 A Node.js app that totals the current Fortnite item shop with item-type toggles.
-It runs without dependencies, an API key, or a database.
+It uses Node's built-in SQLite for history and needs no npm dependencies,
+runtime API key, or external database.
 
 ## Run
 
@@ -30,14 +31,22 @@ itemshop.gg's archive, starting on 26 October 2017. The graph switches between
 bundle-adjusted totals (the same counting rules as today's shop) and the sum of
 all listed prices. Unknown historical prices create gaps in both views;
 missing bundle contents create gaps only in the adjusted view. Values are not
-guessed. Historical totals always represent the full shop; today's type
-toggles affect the live lineup only.
+guessed. Graph totals represent the full shop. Clicking a point or choosing a
+date loads that day's lineup; the type toggles recalculate its selected total.
+Unknown prices stay visible and a selection with missing prices or bundle
+contents has no estimated total.
+
+Day URLs use UTC midnight Unix seconds, for example `/1508976000` for
+26 October 2017. Navigation, including Back/Forward and returning to the live
+shop at `/`, replaces client data without a document reload. Invalid or
+unavailable dates return to `/`. Direct date links also work.
 
 To rebuild the initial archive, set `ITEMSHOP_API_KEY` privately in the importer
 environment and run `npm run import:history`. The importer also accepts the key
 on stdin for a noninteractive caller. It caches source snapshots under
-`~/.fortnite-shop-value/source-archive` and writes `data/history-seed.json`.
-The key is not stored in either output. Commit the seed with the application;
+`~/.fortnite-shop-value/source-archive` and writes `data/history-seed.json`
+plus compressed daily lineups in `data/history-shops/`.
+The key is not stored in these outputs. Commit both with the application;
 the deployed server does not need an itemshop.gg key.
 Recalculate already downloaded history with
 `npm run import:history -- --cached`, which needs no key and makes no network requests.
@@ -56,9 +65,10 @@ Scheduled hosting requests to `/api/shop` at 23:00 UTC and shortly after reset
 can wake the application independently of visitor traffic.
 
 `/api/history` returns the compact timeline with gzip, ETags and browser caching.
-Clicks and date selection use that one loaded timeline without upstream calls.
-`/api/history/YYYY-MM-DD` exports a stored day's metadata and, for our own
-captures, the underlying normalized shop snapshot. Keep the visible
+Date selection fetches just the chosen day's compressed data, with browser
+caching and a small client cache for revisits. It makes no upstream archive
+calls. `/api/history/YYYY-MM-DD` exports a stored day's metadata and normalized
+shop snapshot for both imported days and our own captures. Keep the visible
 "Data from itemshop.gg" attribution when using its historical data.
 
 The intended public domain is https://justasite.xyz/.
