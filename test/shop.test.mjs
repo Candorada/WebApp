@@ -25,7 +25,7 @@ test('selected bundles replace their standalone characters and smaller bundles',
   assert.equal(shop.totals.count, 2);
   const selection = selectOffers(shop.offers);
   assert.deepEqual([...selection.coveredBy.keys()].sort(), ['outfit', 'small']);
-  assert.ok([...selection.coveredBy.values()].every(parent => parent.id === 'large'));
+  assert.ok([...selection.coveredBy.values()].flat().every(parent => parent.id === 'large'));
   assert.equal(totals(shop.offers, new Set(['pickaxe'])).value, 2500);
   assert.equal(totals(shop.offers, new Set(['bundle'])).value, 2500);
   assert.equal(totals(shop.offers, new Set()).value, 0);

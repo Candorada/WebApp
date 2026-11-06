@@ -22,13 +22,16 @@ test('historical totals use archived prices and remove contents covered by bundl
   assert.equal(row.sourceDate, '2017-10-26');
 });
 
-test('missing historical prices are never guessed; listed totals survive missing bundle contents', () => {
+test('missing prices retain item counts; missing bundle contents still return listed and adjusted prices', () => {
   const missingPrice = normalizeArchiveShop(archive([offer('unknown', null)]), '2017-10-26');
   assert.equal(missingPrice.value, null);
   assert.equal(missingPrice.listedValue, null);
+  assert.equal(missingPrice.listedCount, 1);
+  assert.equal(missingPrice.count, 1);
   const missingContents = normalizeArchiveShop(archive([offer('pack', 2000, { type: 'Bundle' })]), '2017-10-26');
-  assert.equal(missingContents.value, null);
+  assert.equal(missingContents.value, 2000);
   assert.equal(missingContents.listedValue, 2000);
+  assert.match(missingContents.qualityReason, /Possible mistakes/);
 });
 
 test('cash-only packs, upcoming sections and bundle components do not inflate history', () => {
@@ -45,10 +48,11 @@ test('different offers can share the archive listing ID; duplicate tiles still c
   assert.equal(row.listedValue, 2500);
 });
 
-test('missing cosmetic identities preserve listed prices but cannot certify bundle coverage', () => {
+test('missing cosmetic identities preserve prices with a warning', () => {
   const row = normalizeArchiveShop(archive([offer('unknown-id', 800, { itemKey: null })]), '2017-10-26');
   assert.equal(row.listedValue, 800);
-  assert.equal(row.value, null);
+  assert.equal(row.value, 800);
+  assert.match(row.qualityReason, /Possible mistakes/);
 });
 
 test('live history freezes the 23:00 UTC capture and starts a new shop day independently', () => {
@@ -116,5 +120,29 @@ test('archived lineups retain missing prices and can recalculate complete catego
   assert.equal(selectOffers(shop.offers, new Set(['emote'])).totals.value, 2000);
   assert.equal(selectOffers(shop.offers, new Set()).totals.value, 0);
   const missingContents = archiveSnapshot(archive([offer('pack', 2000, { type: 'Bundle' })]), '2017-10-26');
-  assert.equal(selectOffers(missingContents.offers).totals.value, null);
+  assert.equal(selectOffers(missingContents.offers).totals.value, 2000);
+});
+
+test('incomplete historical sections link every item to all section bundles and filters keep those bundles', () => {
+  const payload = archive([]);
+  payload.data.shop.sections = [
+    { title: 'Terminator', items: [offer('first', 2000, { type: 'Bundle' }), offer('second', 2500, { type: 'Bundle' }), offer('skin', 1500), offer('axe', 800, { type: 'Pickaxe' })] },
+    { title: 'Daily', items: [offer('daily', 500)] },
+  ];
+  const shop = archiveSnapshot(payload, '2017-10-26');
+  const skin = shop.offers.find(offer => offer.name === 'skin');
+  const axe = shop.offers.find(offer => offer.name === 'axe');
+  assert.equal(skin.bundles.length, 2);
+  assert.deepEqual(axe.bundles, skin.bundles);
+  const all = selectOffers(shop.offers);
+  assert.equal(all.totals.value, 5000);
+  assert.equal(all.coveredBy.get(skin.id).length, 2);
+  assert.equal(all.coveredBy.has(shop.offers.find(offer => offer.name === 'daily').id), false);
+  const axes = selectOffers(shop.offers, new Set(['pickaxe']));
+  assert.equal(axes.totals.value, 4500);
+  assert.equal(axes.coveredBy.get(axe.id).length, 2);
+  assert.match(shop.qualityReason, /Possible mistakes/);
+  // Switching off both bundle types leaves standalone items countable again.
+  const withoutBundles = selectOffers(shop.offers.filter(offer => !offer.isBundle));
+  assert.equal(withoutBundles.totals.value, 2800);
 });

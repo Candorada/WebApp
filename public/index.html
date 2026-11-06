@@ -18,22 +18,22 @@
     </header>
     <div id="notice" role="status" hidden></div>
     <section class="hero" aria-labelledby="hero-title">
-      <div class="intro"><p class="eyebrow">FORTNITE ITEM SHOP</p><h1 id="hero-title"><span id="hero-day">Today's shop.</span><br><span>Your total.</span></h1><p class="description">See what the shop adds up to.<br>Toggle item types to make it yours.</p><p id="shop-date" class="date">Connecting to the current shop…</p></div>
+      <div class="intro"><p class="eyebrow">FORTNITE ITEM SHOP</p><h1 id="hero-title">Shop of today</h1><p class="description">See what the shop adds up to.<br>Toggle item types to make it yours.</p><p id="shop-date" class="date">Connecting to the current shop…</p></div>
       <div class="total-panel">
         <div class="panel-top"><span id="total-label">TOTAL SHOP VALUE</span><span class="coin">V</span></div>
         <div id="total" class="total" aria-live="polite">—</div>
-        <div class="currency">V-BUCKS</div>
+        <div id="total-unit" class="currency">V-BUCKS</div>
         <div class="stats"><div><strong id="offer-count">—</strong><span>counted offers</span></div><div><strong id="savings">—</strong><span>listed discounts · V-Bucks</span></div></div>
         <p id="full-total" class="full-total">Covered offers are excluded from the total.</p>
       </div>
     </section>
     <section class="history-panel" aria-labelledby="history-heading">
       <div class="section-heading history-heading"><div><p class="eyebrow">THE SHOP OVER TIME</p><h2 id="history-heading">Price history</h2></div><div class="history-controls"><label>Price total<select id="history-metric" aria-label="Historical price calculation"><option value="listedValue">All listed prices</option><option value="value">Bundle-adjusted</option></select></label><label>View<select id="history-range" aria-label="History chart range"><option value="all">All history</option><option value="365">Last year</option><option value="90">Last 90 days</option></select></label><label>Shop date · UTC<input id="history-date" type="date" aria-label="Select a historical shop date" disabled></label></div></div>
-      <p class="history-caption">Click the graph or choose a date to load that day's shop. The buttons below filter its items and recalculate your total. The graph shows full-shop totals: bundle-adjusted removes covered offers; all listed prices includes overlapping listings. Missing historical data creates gaps.</p>
+      <p class="history-caption">Click the graph or choose a date to load that day's shop. The buttons below filter its items and recalculate your total. Full-shop totals use listed prices or bundle adjustment. Yellow markers show dates with missing prices: select one to see its item count.</p>
       <p id="history-status" class="history-status" role="status">Loading historical shop prices…</p>
       <svg id="history-chart" class="history-chart" role="img" aria-label="Shop value in V-Bucks over time. Click to select a day, or use the left and right arrow keys." tabindex="0" hidden></svg>
-      <div class="history-selection"><div><span id="history-selected-date" class="eyebrow">SELECTED DAY</span><div class="history-price"><strong id="history-value">—</strong><span>V-BUCKS</span></div></div><div class="history-detail"><p id="history-detail">Select a date to see its total.</p><a id="history-source" href="https://itemshop.gg/fortnite/history" target="_blank" rel="noreferrer" hidden>Verify source shop ↗</a></div></div>
-      <p class="history-caption">Data from <a href="https://itemshop.gg/fortnite" target="_blank" rel="noreferrer">itemshop.gg</a> and our own daily captures. Today's point stays provisional until its 23:00 UTC capture. Missing or incomplete price records appear as gaps.</p>
+      <div class="history-selection"><div><span id="history-selected-date" class="eyebrow">SELECTED DAY</span><div class="history-price"><strong id="history-value">—</strong><span id="history-unit">V-BUCKS</span></div></div><div class="history-detail"><p id="history-detail">Select a date to see its total.</p><a id="history-source" href="https://itemshop.gg/fortnite/history" target="_blank" rel="noreferrer" hidden>Verify source shop ↗</a></div></div>
+      <p class="history-caption">Data from <a href="https://itemshop.gg/fortnite" target="_blank" rel="noreferrer">itemshop.gg</a> and our own daily captures. Today's point stays provisional until its 23:00 UTC capture. Incomplete dates remain selectable and show a yellow warning.</p>
     </section>
     <section class="filter-panel" aria-labelledby="filter-heading">
       <div class="section-heading"><div><p class="eyebrow">BUILD YOUR TOTAL</p><h2 id="filter-heading">What's included?</h2></div><div class="filter-actions"><button id="select-all" class="text-button" type="button">Select all</button><span> / </span><button id="select-none" class="text-button" type="button">Clear</button></div></div>
@@ -45,7 +45,7 @@
       <div id="offers" class="offers" aria-busy="true"></div>
       <p id="empty" class="empty" hidden>No offers to show. Select an item type or change your search.</p>
     </section>
-    <details><summary>How is the value calculated?</summary><p>We use current listed prices from <a href="https://fortnite-api.com/" target="_blank" rel="noreferrer">Fortnite-API</a>. An offer whose entire contents are included in a selected bundle is grayed out and excluded from the total. This also removes smaller bundles covered by larger ones. For identical-content bundles, the cheaper one counts. Partially overlapping bundles with unique contents still count in full. Car component listings are excluded; their purchase bundles appear under Cars. Categories match any included item type, so one bundle can appear in multiple categories but is counted at most once. Ownership discounts and cash-only packs aren't included. Search changes the list only.</p></details>
+    <details><summary>How is the value calculated?</summary><p>We use current listed prices from <a href="https://fortnite-api.com/" target="_blank" rel="noreferrer">Fortnite-API</a> and archived prices from itemshop.gg. Offers fully included in a selected bundle are grayed out and excluded. For historical sections with missing bundle contents, every standalone item is assumed to belong to one of that section's bundles; each item links to all candidate bundles. Sections without bundles stay ungrouped. The heuristic can make mistakes, so affected dates show a yellow warning. Bundle prices still count separately unless confirmed contents prove one is covered. Missing prices show a total item count instead of a V-Bucks estimate. Search changes the list only.</p></details>
     <footer><span>Independent fan tool · Data by <a href="https://fortnite-api.com/" target="_blank" rel="noreferrer">Fortnite-API</a></span><span id="updated">Updates automatically every minute</span></footer>
   </main>
 </body>

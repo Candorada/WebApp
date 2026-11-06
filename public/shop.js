@@ -18,13 +18,15 @@ export function selectOffers(offers, selectedTypes) {
     b.itemIds.length - a.itemIds.length || (a.price ?? Infinity) - (b.price ?? Infinity) || a.id.localeCompare(b.id));
   for (const bundle of bundles) {
     const parent = retainedBundles.find(other => bundle.itemIds.every(id => other.itemIds.includes(id)));
-    if (parent) coveredBy.set(bundle.id, parent);
+    if (parent) coveredBy.set(bundle.id, [parent]);
     else retainedBundles.push(bundle);
   }
   for (const offer of selected) {
-    if (offer.isBundle || !offer.itemIds.length) continue;
-    const parent = retainedBundles.find(bundle => offer.itemIds.every(id => bundle.itemIds.includes(id)));
-    if (parent) coveredBy.set(offer.id, parent);
+    if (offer.isBundle) continue;
+    const assumed = selected.filter(bundle => bundle.isBundle && offer.bundles?.includes(bundle.id));
+    if (assumed.length) { coveredBy.set(offer.id, assumed); continue; }
+    const parent = offer.itemIds.length && retainedBundles.find(bundle => offer.itemIds.every(id => bundle.itemIds.includes(id)));
+    if (parent) coveredBy.set(offer.id, [parent]);
   }
   const counted = selected.filter(offer => !coveredBy.has(offer.id) && !offer.bundleOnly);
   const summary = counted.reduce((sum, offer) => {
@@ -33,7 +35,7 @@ export function selectOffers(offers, selectedTypes) {
     sum.count++;
     return sum;
   }, { value: 0, savings: 0, count: 0 });
-  if (counted.some(offer => offer.price === null || offer.coverageUnknown)) {
+  if (counted.some(offer => offer.price === null)) {
     summary.value = null;
     summary.savings = null;
   }

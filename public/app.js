@@ -64,6 +64,8 @@ function offerCard(offer, coveredBy) {
   const excludedFromTotal = coveredBy || offer.bundleOnly;
   article.className = excludedFromTotal ? 'offer covered' : 'offer';
   article.dataset.offerId = offer.id;
+  article.id = `offer-${offer.id}`;
+  article.tabIndex = -1;
   const art = document.createElement('div');
   art.className = 'offer-art';
   if (offer.image) {
@@ -95,16 +97,33 @@ function offerCard(offer, coveredBy) {
     price.append(original);
   }
   info.append(type, name, price);
-  if (offer.price === null || offer.coverageUnknown) {
+  if (offer.price === null) {
     const note = document.createElement('p');
     note.className = 'coverage-note';
-    note.textContent = offer.price === null ? 'Price missing from archive' : 'Bundle coverage unavailable in archive';
+    note.textContent = 'Price missing from archive';
     info.append(note);
   }
   if (excludedFromTotal) {
     const note = document.createElement('p');
     note.className = 'coverage-note';
-    note.textContent = coveredBy ? `Included in ${coveredBy.name}` : 'Only sold in a bundle';
+    if (coveredBy) {
+      note.append(document.createTextNode(offer.bundles?.length ? 'Assumed included in: ' : 'Included in: '));
+      coveredBy.forEach((bundle, index) => {
+        if (index) note.append(document.createTextNode(' / '));
+        const link = document.createElement('a');
+        link.href = '#' + encodeURIComponent(`offer-${bundle.id}`);
+        link.textContent = bundle.name;
+        link.addEventListener('click', event => {
+          event.preventDefault();
+          $('search').value = '';
+          renderOffers();
+          const target = document.getElementById(`offer-${bundle.id}`);
+          target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          target?.focus({ preventScroll: true });
+        });
+        note.append(link);
+      });
+    } else note.textContent = 'Only sold in a bundle';
     note.title = 'Excluded from the total';
     info.append(note);
     article.setAttribute('aria-label', `${offer.name} — not added to total. ${note.textContent}.`);
@@ -118,14 +137,16 @@ function renderOffers() {
   const selected = selectedTypes();
   const selection = selectOffers(shop.offers, selected);
   const summary = selection.totals;
-  $('total').textContent = formatted(summary.value);
+  const countOnly = summary.value === null;
+  $('total').textContent = number.format(countOnly ? selection.selected.length : summary.value);
+  $('total-unit').textContent = countOnly ? 'ITEMS · PRICE UNAVAILABLE' : 'V-BUCKS';
   $('offer-count').textContent = number.format(summary.count);
   $('savings').textContent = formatted(summary.savings);
   const all = selection.selected.length === shop.offers.length;
-  $('total-label').textContent = all ? 'TOTAL SHOP VALUE' : 'SELECTED SHOP VALUE';
+  $('total-label').textContent = countOnly ? 'TOTAL ITEM COUNT' : all ? 'TOTAL SHOP VALUE' : 'SELECTED SHOP VALUE';
   const omitted = selection.selected.length - summary.count;
   $('full-total').textContent = summary.value === null
-    ? 'This selection has missing historical prices or bundle contents. Toggle those item types off to calculate the remaining offers.'
+    ? 'Showing the total number of selected items because some historical prices are missing. Possible mistakes for this day.'
     : `${number.format(omitted)} covered or bundle-only listings excluded.${all ? '' : ` Full shop: ${formatted(shop.totals.value)} V-Bucks.`}`;
   const query = $('search').value.trim().toLocaleLowerCase();
   const offers = selection.selected.filter(offer => `${offer.name} ${offer.items.join(' ')}`.toLocaleLowerCase().includes(query));
@@ -148,7 +169,7 @@ async function loadShop(refresh = false) {
   try {
     let result = date && snapshots.get(date);
     if (!result || refresh) {
-      const response = await fetch(date ? `/api/history/${date}` : '/api/shop', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]), cache: refresh ? 'reload' : 'default' });
+      const response = await fetch(date ? `/api/history/${date}?calculation=section-bundles-v2` : '/api/shop', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]), cache: refresh ? 'reload' : 'default' });
       const data = await response.json();
       if (date && [400, 404].includes(response.status)) { navigateDate(null, { replace: true }); return; }
       if (!response.ok) throw new Error(data.error || 'Could not refresh the shop.');
@@ -164,7 +185,7 @@ async function loadShop(refresh = false) {
     const day = shop.shopDate.slice(0, 10);
     const displayDate = new Date(shop.shopDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
     $('shop-date').textContent = `${displayDate} rotation · ${date ? 'Archived shop · UTC' : 'Resets at 00:00 UTC'}`;
-    $('hero-day').textContent = date ? 'That day’s shop.' : "Today's shop.";
+    $('hero-title').textContent = `Shop of ${displayDate}`;
     $('shop-mode').textContent = date ? 'ARCHIVED SHOP' : 'LIVE SHOP';
     $('live-shop').hidden = !date;
     document.title = date ? `${displayDate} · Fortnite Shop Value` : 'Fortnite Shop Value';

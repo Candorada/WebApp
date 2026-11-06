@@ -10,6 +10,7 @@
     "start": "node server.js",
     "start:desktop": "node server.mjs --open",
     "test": "node --test",
-    "import:history": "node scripts/import-history.mjs"
+    "import:history": "node scripts/import-history.mjs",
+    "check:history": "node scripts/check-history.mjs"
   }
 }

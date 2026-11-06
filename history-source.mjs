@@ -15,6 +15,7 @@ export function archiveSnapshot(payload, date) {
   const unique = new Map();
   const unknownPrices = [];
   let missingContents = false;
+  const groups = new Map();
   for (const section of shop.sections) {
     if (section.upcoming) continue;
     if (!Array.isArray(section.items)) throw new Error('Historical section is missing its offers.');
@@ -33,6 +34,9 @@ export function archiveSnapshot(payload, date) {
       if (missingIdentity) missingContents = true;
       const itemIds = missingIdentity ? [] : [...new Set(contents.map(content => content.itemKey.toLowerCase()))];
       const id = JSON.stringify([String(item.id), price, [...itemIds].sort()]);
+      const group = groups.get(section.title) || new Set();
+      group.add(id);
+      groups.set(section.title, group);
       if (unique.has(id)) continue;
       const isCar = contents.some(content => /^(car|decal|wheel|boost|trail)/i.test(content.type || '') || /^fn:item:(carbody_|carskin_|wheel_)/i.test(content.itemKey || ''));
       const types = [...new Set(contents.map(category))];
@@ -44,6 +48,7 @@ export function archiveSnapshot(payload, date) {
         regularPrice: Number.isSafeInteger(item.price?.regular) ? item.price.regular : price,
         isBundle: Boolean(isBundle), bundleOnly: included || (isCar && !isBundle),
         itemIds, types: [...new Set(types)],
+        section: section.title || null, bundles: [],
         coverageUnknown: missingIdentity || (Boolean(isBundle) && !contents.length),
         items: contents.map(content => content.name).filter(Boolean),
         image: typeof image === 'string' && image.startsWith('https://') ? image : null,
@@ -51,13 +56,33 @@ export function archiveSnapshot(payload, date) {
     }
   }
   const offers = [...unique.values()];
+  let assumedSections = 0;
+  let ungroupedBundles = 0;
+  for (const [title, ids] of groups) {
+    const group = [...ids].map(id => unique.get(id));
+    const bundles = group.filter(offer => offer.isBundle);
+    if (!bundles.some(bundle => bundle.coverageUnknown)) continue;
+    if (!title) { ungroupedBundles += bundles.length; continue; }
+    const items = group.filter(offer => !offer.isBundle);
+    if (!items.length) { ungroupedBundles += bundles.length; continue; }
+    assumedSections++;
+    for (const item of items) item.bundles = [...new Set([...item.bundles, ...bundles.map(bundle => bundle.id)])];
+    // Keep inferred membership separate from confirmed contents: several bundles
+    // in one section must still count individually, even with the same candidates.
+    const types = items.flatMap(item => item.types).filter(type => type !== 'bundle');
+    for (const bundle of bundles) bundle.types = [...new Set([...bundle.types, ...types])];
+  }
   const summary = totals(offers);
-  const completePrices = unknownPrices.length === 0;
-  const completeContents = completePrices && !missingContents;
+  const reasons = [];
+  if (missingContents) reasons.push('The archive has incomplete bundle data.');
+  if (assumedSections) reasons.push('Standalone items are assumed to belong to the bundles in their shop section.');
+  if (ungroupedBundles) reasons.push('Some bundles have no section items to group; their listed prices are still counted.');
+  if (unknownPrices.length) reasons.push(`Historical prices are missing for ${[...new Set(unknownPrices)].join(', ')}.`);
+  if (archive.exact === false) reasons.push('The source carried this shop forward from another date.');
   return {
     shopDate: date + 'T00:00:00.000Z', offers,
-    totals: { ...summary, value: completeContents ? summary.value : null }, source: 'itemshop.gg',
-    qualityReason: !completePrices ? `Historical prices missing for ${unknownPrices.join(', ')}.` : missingContents ? 'The archive does not include all bundle contents for this date.' : null,
+    totals: summary, source: 'itemshop.gg',
+    qualityReason: reasons.length ? 'Possible mistakes for this day. ' + reasons.join(' ') : null,
     capturedAt: shop.updatedAt || null,
     sourceDate: archive.shopDate || shop.shopDate || date,
     exact: archive.exact !== false,
@@ -68,9 +93,9 @@ export function normalizeArchiveShop(payload, date) {
   const snapshot = archiveSnapshot(payload, date);
   const completePrices = snapshot.offers.every(offer => offer.price !== null);
   return {
-    date, value: snapshot.totals.value, count: snapshot.totals.value === null ? null : snapshot.totals.count,
+    date, value: snapshot.totals.value, count: snapshot.totals.count,
     listedValue: completePrices ? snapshot.offers.reduce((sum, offer) => sum + offer.price, 0) : null,
-    listedCount: completePrices ? snapshot.offers.length : null,
+    listedCount: snapshot.offers.length,
     qualityReason: snapshot.qualityReason, capturedAt: snapshot.capturedAt, sourceDate: snapshot.sourceDate, exact: snapshot.exact,
   };
 }

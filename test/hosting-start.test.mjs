@@ -40,7 +40,7 @@ test('the app starts through the hosting CommonJS loader and serves its historic
     assert.equal(unchanged.status, 304);
     const page = await fetch(`http://127.0.0.1:${port}/1508976000`);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /id="hero-day"/);
+    assert.match(await page.text(), /id="hero-title"/);
     for (const path of ['/bad-date', '/1', '/99999999999', '/1508976000000']) {
       const invalid = await fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' });
       assert.equal(invalid.status, 302);

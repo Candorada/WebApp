@@ -29,12 +29,15 @@ There is no build step. `/api/health` is the health endpoint.
 The graph and UTC date picker use precomputed daily totals imported from
 itemshop.gg's archive, starting on 26 October 2017. The graph switches between
 bundle-adjusted totals (the same counting rules as today's shop) and the sum of
-all listed prices. Unknown historical prices create gaps in both views;
-missing bundle contents create gaps only in the adjusted view. Values are not
-guessed. Graph totals represent the full shop. Clicking a point or choosing a
+all listed prices. Dates with missing prices show an item-count fallback,
+marked yellow on the graph. Graph totals represent the full shop. Clicking a point or choosing a
 date loads that day's lineup; the type toggles recalculate its selected total.
-Unknown prices stay visible and a selection with missing prices or bundle
-contents has no estimated total.
+Unknown prices stay visible. If bundle contents are missing, standalone items
+link to all bundles in the same named shop section and are excluded whenever
+one of those bundles is selected. Sections without bundles remain ungrouped.
+Inferred membership never merges bundles with each other. Affected days show
+a yellow possible-mistakes warning. A selection with missing counted prices
+shows its total item count, labeled as items rather than V-Bucks.
 
 Day URLs use UTC midnight Unix seconds, for example `/1508976000` for
 26 October 2017. Navigation, including Back/Forward and returning to the live
@@ -50,6 +53,8 @@ The key is not stored in these outputs. Commit both with the application;
 the deployed server does not need an itemshop.gg key.
 Recalculate already downloaded history with
 `npm run import:history -- --cached`, which needs no key and makes no network requests.
+Run `npm run check:history` to check all snapshots and bundle links and regenerate
+`HISTORY-REPORT.md` and the complete exception list in `data/history-report.json`.
 
 On Hostinger the server imports that seed into
 `<domain-root>/.fortnite-shop-value/history.sqlite`, outside public_html and
