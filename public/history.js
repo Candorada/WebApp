@@ -50,7 +50,7 @@ function draw() {
   const days = Number($('history-range').value);
   const cutoff = Number.isFinite(days) ? timestamp(points.at(-1).date) - (days - 1) * 86400000 : -Infinity;
   visible = points.filter(point => timestamp(point.date) >= cutoff && point[metric()] !== null);
-  $('history-status').textContent = `${number.format(points.length)} archived dates · ${number.format(points.filter(point => point[metric()] !== null).length)} verified totals in this view · ${points[0].date} onwards${archiveGapCount ? ` · ${archiveGapCount} unavailable source records` : ''}`;
+  $('history-status').textContent = `${number.format(points.length)} archived dates · ${number.format(points.filter(point => point[metric()] !== null).length)} available totals in this view · ${points[0].date} onwards${archiveGapCount ? ` · ${archiveGapCount} unavailable source records` : ''}`;
   const width = Math.max(320, chart.clientWidth || 900);
   const height = 280;
   if (!visible.length) { chart.replaceChildren(element('text', { x: 20, y: 80, class: 'history-axis' }, 'No complete totals for this range.')); chartBounds = null; return; }
