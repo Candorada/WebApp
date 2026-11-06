@@ -32,7 +32,7 @@ function selectDate(date) {
     $('history-source').href = source;
     const timing = point.source === 'itemshop.gg'
       ? 'Archived shop' + (point.exact ? '' : ` · carried forward from ${point.sourceDate}`)
-      : point.finalized ? `Saved ${new Date(point.capturedAt).toLocaleTimeString(undefined, { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false })} UTC` : 'Today · provisional';
+      : point.finalized ? `Saved ${new Date(point.capturedAt).toLocaleTimeString(undefined, { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false })} UTC` : 'Provisional snapshot';
     if (point[metric()] === null) {
       $('history-detail').textContent = point.qualityReason || 'This total cannot be verified from the archived data.';
     } else {
