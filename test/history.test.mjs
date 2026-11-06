@@ -22,10 +22,12 @@ test('historical totals use archived prices and remove contents covered by bundl
   assert.equal(row.sourceDate, '2017-10-26');
 });
 
-test('missing prices retain item counts; missing bundle contents still return listed and adjusted prices', () => {
+test('missing prices retain monetary subtotals with separate missing-price counts', () => {
   const missingPrice = normalizeArchiveShop(archive([offer('unknown', null)]), '2017-10-26');
-  assert.equal(missingPrice.value, null);
-  assert.equal(missingPrice.listedValue, null);
+  assert.equal(missingPrice.value, 0);
+  assert.equal(missingPrice.unpricedCount, 1);
+  assert.equal(missingPrice.listedValue, 0);
+  assert.equal(missingPrice.listedUnpricedCount, 1);
   assert.equal(missingPrice.listedCount, 1);
   assert.equal(missingPrice.count, 1);
   const missingContents = normalizeArchiveShop(archive([offer('pack', 2000, { type: 'Bundle' })]), '2017-10-26');
@@ -80,11 +82,13 @@ test('stored history survives reopening the database and seeding is idempotent',
   try {
     const first = new HistoryStore(filename, seed);
     first.recordLive(live('2026-11-06', 1234), new Date('2026-11-06T23:00:00Z'));
+    first.db.exec('ALTER TABLE shops DROP COLUMN unpriced_count; ALTER TABLE shops DROP COLUMN listed_unpriced_count;');
     first.close();
     const reopened = new HistoryStore(filename, seed);
     assert.equal(reopened.list().length, 2);
     assert.equal(reopened.get('2026-11-06').value, 1234);
     assert.equal(reopened.snapshot('2026-11-06').totals.value, 1234);
+    assert.equal(reopened.get('2026-11-06').unpricedCount, 0);
     reopened.close();
   } finally {
     if (!resolve(directory).startsWith(resolve(tmpdir()) + sep)) throw new Error('Unsafe temporary cleanup path.');
@@ -115,7 +119,8 @@ test('archived lineups retain missing prices and can recalculate complete catego
   ]), '2017-10-26');
   assert.equal(shop.offers.length, 3);
   assert.equal(shop.offers[0].price, null);
-  assert.equal(selectOffers(shop.offers).totals.value, null);
+  assert.equal(selectOffers(shop.offers).totals.value, 2800);
+  assert.equal(selectOffers(shop.offers).totals.unpricedCount, 1);
   assert.equal(selectOffers(shop.offers, new Set(['pickaxe'])).totals.value, 800);
   assert.equal(selectOffers(shop.offers, new Set(['emote'])).totals.value, 2000);
   assert.equal(selectOffers(shop.offers, new Set()).totals.value, 0);

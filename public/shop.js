@@ -14,7 +14,7 @@ export function selectOffers(offers, selectedTypes) {
   const selected = offers.filter(offer => !selectedTypes || offer.types.some(type => selectedTypes.has(type)));
   const coveredBy = new Map();
   const retainedBundles = [];
-  const bundles = selected.filter(offer => offer.isBundle && offer.itemIds.length).sort((a, b) =>
+  const bundles = selected.filter(offer => offer.isBundle && !offer.coverageUnknown && offer.itemIds.length).sort((a, b) =>
     b.itemIds.length - a.itemIds.length || (a.price ?? Infinity) - (b.price ?? Infinity) || a.id.localeCompare(b.id));
   for (const bundle of bundles) {
     const parent = retainedBundles.find(other => bundle.itemIds.every(id => other.itemIds.includes(id)));
@@ -28,17 +28,16 @@ export function selectOffers(offers, selectedTypes) {
     const parent = offer.itemIds.length && retainedBundles.find(bundle => offer.itemIds.every(id => bundle.itemIds.includes(id)));
     if (parent) coveredBy.set(offer.id, [parent]);
   }
-  const counted = selected.filter(offer => !coveredBy.has(offer.id) && !offer.bundleOnly);
+  const counted = selected.filter(offer => !coveredBy.has(offer.id) && (offer.isBundle || !offer.bundleOnly));
   const summary = counted.reduce((sum, offer) => {
-    sum.value += offer.price;
-    sum.savings += Math.max(0, offer.regularPrice - offer.price);
+    if (offer.price === null) sum.unpricedCount++;
+    else {
+      sum.value += offer.price;
+      sum.savings += Math.max(0, offer.regularPrice - offer.price);
+    }
     sum.count++;
     return sum;
-  }, { value: 0, savings: 0, count: 0 });
-  if (counted.some(offer => offer.price === null)) {
-    summary.value = null;
-    summary.savings = null;
-  }
+  }, { value: 0, savings: 0, count: 0, unpricedCount: 0 });
   return { selected, counted, coveredBy, totals: summary };
 }
 

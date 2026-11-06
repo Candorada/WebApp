@@ -29,15 +29,18 @@ There is no build step. `/api/health` is the health endpoint.
 The graph and UTC date picker use precomputed daily totals imported from
 itemshop.gg's archive, starting on 26 October 2017. The graph switches between
 bundle-adjusted totals (the same counting rules as today's shop) and the sum of
-all listed prices. Dates with missing prices show an item-count fallback,
-marked yellow on the graph. Graph totals represent the full shop. Clicking a point or choosing a
+all listed prices. Dates with missing prices retain a known-price subtotal,
+marked yellow on the graph. Item counts never replace monetary values.
+Graph totals represent the full shop. Clicking a point or choosing a
 date loads that day's lineup; the type toggles recalculate its selected total.
 Unknown prices stay visible. If bundle contents are missing, standalone items
 link to all bundles in the same named shop section and are excluded whenever
 one of those bundles is selected. Sections without bundles remain ungrouped.
 Inferred membership never merges bundles with each other. Affected days show
 a yellow possible-mistakes warning. A selection with missing counted prices
-shows its total item count, labeled as items rather than V-Bucks.
+shows its known V-Bucks subtotal and the number of unpriced listings.
+Every bundle counts unless both bundles have confirmed complete contents
+proving that one is fully covered. Component flags never suppress a bundle.
 
 Day URLs use UTC midnight Unix seconds, for example `/1508976000` for
 26 October 2017. Navigation, including Back/Forward and returning to the live

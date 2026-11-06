@@ -10,6 +10,7 @@ let visible = [];
 let chartBounds;
 let archiveGapCount = 0;
 const metric = () => $('history-metric').value;
+const unpriced = point => (metric() === 'value' ? point.unpricedCount : point.listedUnpricedCount) || 0;
 
 function element(tag, attrs = {}, text) {
   const node = document.createElementNS(svgNS, tag);
@@ -25,9 +26,8 @@ function selectDate(date) {
   $('history-date').value = date;
   $('history-selected-date').textContent = displayDate(date);
   const point = points.find(point => point.date === date);
-  const countOnly = point && point[metric()] === null;
-  $('history-value').textContent = point ? number.format(countOnly ? point.listedCount : point[metric()]) : '—';
-  $('history-unit').textContent = countOnly ? 'ITEMS · PRICE UNAVAILABLE' : 'V-BUCKS';
+  $('history-value').textContent = point ? number.format(point[metric()]) : '—';
+  $('history-unit').textContent = point && unpriced(point) ? 'V-BUCKS · KNOWN PRICES' : 'V-BUCKS';
   $('history-source').hidden = !point;
   if (!point) {
     $('history-detail').textContent = 'No complete price record for this date. A total has not been estimated.';
@@ -37,8 +37,8 @@ function selectDate(date) {
     const timing = point.source === 'itemshop.gg'
       ? 'Archived shop' + (point.exact ? '' : ` · carried forward from ${point.sourceDate}`)
       : point.finalized ? `Saved ${new Date(point.capturedAt).toLocaleTimeString(undefined, { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false })} UTC` : 'Provisional snapshot';
-    if (point[metric()] === null) {
-      $('history-detail').textContent = `Total item count · ${timing} · Possible mistakes for this day; historical prices are missing.`;
+    if (unpriced(point)) {
+      $('history-detail').textContent = `Known price subtotal · ${unpriced(point)} unpriced listings excluded · ${timing} · Possible mistakes for this day`;
     } else {
       const count = metric() === 'value' ? point.count : point.listedCount;
       $('history-detail').textContent = `${number.format(count)} ${metric() === 'value' ? 'counted offers' : 'priced listings'} · ${timing}${point.qualityReason ? ' · Possible mistakes for this day' : ''}`;
@@ -54,8 +54,8 @@ function draw() {
   const days = Number($('history-range').value);
   const cutoff = Number.isFinite(days) ? timestamp(points.at(-1).date) - (days - 1) * 86400000 : -Infinity;
   visible = points.filter(point => timestamp(point.date) >= cutoff);
-  const priced = visible.filter(point => point[metric()] !== null);
-  $('history-status').textContent = `${number.format(points.length)} selectable dates · ${number.format(priced.length)} price totals · ${number.format(visible.length - priced.length)} item-count fallbacks in this view · ${points[0].date} onwards${archiveGapCount ? ` · ${archiveGapCount} unavailable source records` : ''}`;
+  const partial = visible.filter(point => unpriced(point));
+  $('history-status').textContent = `${number.format(points.length)} selectable dates · ${number.format(visible.length - partial.length)} totals with all prices · ${number.format(partial.length)} known-price subtotals in this view · ${points[0].date} onwards${archiveGapCount ? ` · ${archiveGapCount} unavailable source records` : ''}`;
   const width = Math.max(320, chart.clientWidth || 900);
   const height = 280;
   if (!visible.length) { chart.replaceChildren(element('text', { x: 20, y: 80, class: 'history-axis' }, 'No complete totals for this range.')); chartBounds = null; return; }
@@ -63,14 +63,14 @@ function draw() {
   const first = timestamp(visible[0].date);
   const last = timestamp(visible.at(-1).date);
   const span = Math.max(86400000, last - first);
-  const maximum = Math.max(1, ...priced.map(point => point[metric()])) * 1.08;
+  const maximum = Math.max(1, ...visible.map(point => point[metric()])) * 1.08;
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const x = point => visible.length === 1 ? padding.left + plotWidth / 2 : padding.left + (timestamp(point.date) - first) / span * plotWidth;
   const y = point => padding.top + plotHeight * (1 - (point[metric()] ?? 0) / maximum);
   chartBounds = { first, last, left: padding.left, plotWidth, span, width };
   chart.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  chart.replaceChildren(element('title', {}, 'Shop prices in V-Bucks. Yellow baseline markers show dates with item counts only; they are not zero-price shops.'));
+  chart.replaceChildren(element('title', {}, 'Shop buyout estimates in V-Bucks. Yellow markers are known-price subtotals with missing prices. Item counts are never plotted as prices.'));
   for (let i = 0; i <= 3; i++) {
     const value = maximum * i / 3;
     const position = padding.top + plotHeight * (1 - i / 3);
@@ -80,12 +80,10 @@ function draw() {
   let path = '';
   let previous;
   for (const point of visible) {
-    if (point[metric()] === null) {
+    if (unpriced(point)) {
       const marker = element('circle', { cx: x(point), cy: y(point), r: 2.5, class: 'history-fallback' });
-      marker.append(element('title', {}, `${point.date}: ${point.listedCount} items; price unavailable`));
+      marker.append(element('title', {}, `${point.date}: ${number.format(point[metric()])} V-Bucks known subtotal; ${unpriced(point)} unpriced listings`));
       chart.append(marker);
-      previous = undefined;
-      continue;
     }
     const gap = previous && timestamp(point.date) - timestamp(previous.date) > 86400000;
     path += `${!previous || gap ? 'M' : 'L'}${x(point).toFixed(2)},${y(point).toFixed(2)} `;
@@ -97,7 +95,7 @@ function draw() {
   const selected = visible.find(point => point.date === selectedDate);
   if (selected) {
     chart.append(element('line', { x1: x(selected), x2: x(selected), y1: padding.top, y2: height - padding.bottom, class: 'history-guide' }));
-    chart.append(element('circle', { cx: x(selected), cy: y(selected), r: 5, class: selected[metric()] === null ? 'history-marker history-fallback' : 'history-marker' }));
+    chart.append(element('circle', { cx: x(selected), cy: y(selected), r: 5, class: unpriced(selected) ? 'history-marker history-fallback' : 'history-marker' }));
   }
 }
 
@@ -129,7 +127,7 @@ document.addEventListener('shop:navigation', event => {
 
 async function loadHistory() {
   try {
-    const response = await fetch('/api/history?calculation=section-bundles-v2');
+    const response = await fetch('/api/history?calculation=buyout-v3');
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'History could not be loaded.');
     points = data.points;

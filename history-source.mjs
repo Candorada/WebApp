@@ -46,7 +46,7 @@ export function archiveSnapshot(payload, date) {
       unique.set(id, {
         id, name: item.name || item.id, price,
         regularPrice: Number.isSafeInteger(item.price?.regular) ? item.price.regular : price,
-        isBundle: Boolean(isBundle), bundleOnly: included || (isCar && !isBundle),
+        isBundle: Boolean(isBundle), bundleOnly: !isBundle && (included || isCar),
         itemIds, types: [...new Set(types)],
         section: section.title || null, bundles: [],
         coverageUnknown: missingIdentity || (Boolean(isBundle) && !contents.length),
@@ -91,10 +91,11 @@ export function archiveSnapshot(payload, date) {
 
 export function normalizeArchiveShop(payload, date) {
   const snapshot = archiveSnapshot(payload, date);
-  const completePrices = snapshot.offers.every(offer => offer.price !== null);
   return {
     date, value: snapshot.totals.value, count: snapshot.totals.count,
-    listedValue: completePrices ? snapshot.offers.reduce((sum, offer) => sum + offer.price, 0) : null,
+    unpricedCount: snapshot.totals.unpricedCount,
+    listedValue: snapshot.offers.reduce((sum, offer) => sum + (offer.price ?? 0), 0),
+    listedUnpricedCount: snapshot.offers.filter(offer => offer.price === null).length,
     listedCount: snapshot.offers.length,
     qualityReason: snapshot.qualityReason, capturedAt: snapshot.capturedAt, sourceDate: snapshot.sourceDate, exact: snapshot.exact,
   };

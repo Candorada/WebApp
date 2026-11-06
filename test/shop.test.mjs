@@ -10,7 +10,7 @@ const feed = entries => ({ status: 200, data: { date: '2026-11-05T00:00:00Z', en
 test('counts duplicate offer IDs once and uses the discounted price', () => {
   const item = { ...offer('a', 1200), regularPrice: 1500 };
   const shop = normalizeShop(feed([item, item, offer('b', 0)]));
-  assert.deepEqual(shop.totals, { value: 1200, savings: 300, count: 2 });
+  assert.deepEqual(shop.totals, { value: 1200, savings: 300, count: 2, unpricedCount: 0 });
   assert.equal(shop.duplicateCount, 1);
 });
 
@@ -59,6 +59,27 @@ test('partial overlap preserves offers with unique contents and names do not def
 test('a larger bundle outside the selected types does not suppress a selected offer', () => {
   const shop = normalizeShop(feed([offer('outfit', 1500), bundle('emotes', 2000, [item('dance', 'emote')])]));
   assert.equal(totals(shop.offers, new Set(['outfit'])).value, 1500);
+});
+
+test('bundles with incomplete contents are never excluded by assumptions or component flags', () => {
+  const shop = normalizeShop(feed([
+    bundle('large', 2500, [item('one'), item('two')]),
+    bundle('unknown', 1800, [item('one')]),
+  ]));
+  Object.assign(shop.offers[1], { coverageUnknown: true, bundleOnly: true });
+  const selection = selectOffers(shop.offers);
+  assert.equal(selection.totals.value, 4300);
+  assert.equal(selection.counted.length, 2);
+  assert.equal(selection.coveredBy.has('unknown'), false);
+});
+
+test('unpriced items preserve every known bundle price and report missing prices separately', () => {
+  const shop = normalizeShop(feed([bundle('pack', 2400, [item('skin')]), offer('other', 500)]));
+  shop.offers[1].price = null;
+  const selection = selectOffers(shop.offers);
+  assert.equal(selection.totals.value, 2400);
+  assert.equal(selection.totals.unpricedCount, 1);
+  assert.equal(selection.totals.count, 2);
 });
 
 test('Cars includes purchase bundles and excludes their component listings', () => {

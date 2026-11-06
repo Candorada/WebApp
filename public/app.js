@@ -61,7 +61,7 @@ function renderTypes() {
 
 function offerCard(offer, coveredBy) {
   const article = document.createElement('article');
-  const excludedFromTotal = coveredBy || offer.bundleOnly;
+  const excludedFromTotal = coveredBy || (!offer.isBundle && offer.bundleOnly);
   article.className = excludedFromTotal ? 'offer covered' : 'offer';
   article.dataset.offerId = offer.id;
   article.id = `offer-${offer.id}`;
@@ -137,16 +137,16 @@ function renderOffers() {
   const selected = selectedTypes();
   const selection = selectOffers(shop.offers, selected);
   const summary = selection.totals;
-  const countOnly = summary.value === null;
-  $('total').textContent = number.format(countOnly ? selection.selected.length : summary.value);
-  $('total-unit').textContent = countOnly ? 'ITEMS · PRICE UNAVAILABLE' : 'V-BUCKS';
+  const incomplete = summary.unpricedCount > 0;
+  $('total').textContent = number.format(summary.value);
+  $('total-unit').textContent = incomplete ? 'V-BUCKS · KNOWN PRICES' : 'V-BUCKS';
   $('offer-count').textContent = number.format(summary.count);
   $('savings').textContent = formatted(summary.savings);
   const all = selection.selected.length === shop.offers.length;
-  $('total-label').textContent = countOnly ? 'TOTAL ITEM COUNT' : all ? 'TOTAL SHOP VALUE' : 'SELECTED SHOP VALUE';
+  $('total-label').textContent = incomplete ? 'KNOWN BUYOUT SUBTOTAL' : all ? 'ESTIMATED SHOP BUYOUT' : 'SELECTED BUYOUT COST';
   const omitted = selection.selected.length - summary.count;
-  $('full-total').textContent = summary.value === null
-    ? 'Showing the total number of selected items because some historical prices are missing. Possible mistakes for this day.'
+  $('full-total').textContent = incomplete
+    ? `${number.format(summary.unpricedCount)} counted listings have no archived price and are not included in this subtotal. The full buyout price may differ.`
     : `${number.format(omitted)} covered or bundle-only listings excluded.${all ? '' : ` Full shop: ${formatted(shop.totals.value)} V-Bucks.`}`;
   const query = $('search').value.trim().toLocaleLowerCase();
   const offers = selection.selected.filter(offer => `${offer.name} ${offer.items.join(' ')}`.toLocaleLowerCase().includes(query));
@@ -169,7 +169,7 @@ async function loadShop(refresh = false) {
   try {
     let result = date && snapshots.get(date);
     if (!result || refresh) {
-      const response = await fetch(date ? `/api/history/${date}?calculation=section-bundles-v2` : '/api/shop', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]), cache: refresh ? 'reload' : 'default' });
+      const response = await fetch(date ? `/api/history/${date}?calculation=buyout-v3` : '/api/shop', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]), cache: refresh ? 'reload' : 'default' });
       const data = await response.json();
       if (date && [400, 404].includes(response.status)) { navigateDate(null, { replace: true }); return; }
       if (!response.ok) throw new Error(data.error || 'Could not refresh the shop.');
