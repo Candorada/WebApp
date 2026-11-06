@@ -1,16 +1,32 @@
-import { navigateDate, visibleDate } from './app.js';
+import { navigateDate, visibleDate, selectedTypes, setAvailableTypes, selectCategory } from './app.js';
+import { typeLabel } from './shop.js';
 
 const $ = id => document.getElementById(id);
 const number = new Intl.NumberFormat('en-US');
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 const svgNS = 'http://www.w3.org/2000/svg';
 let points = [];
+let fullPoints = [];
 let selectedDate;
 let visible = [];
 let chartBounds;
 let archiveGapCount = 0;
 const metric = () => $('history-metric').value;
 const unpriced = point => (metric() === 'value' ? point.unpricedCount : point.listedUnpricedCount) || 0;
+const emptyTotals = { value: 0, count: 0, unpricedCount: 0, listedValue: 0, listedCount: 0, listedUnpricedCount: 0 };
+
+function applyCategory() {
+  const types = [...selectedTypes()];
+  const category = types.length === 1 ? types[0] : null;
+  points = category ? fullPoints.map(point => ({ ...point, ...(Object.hasOwn(point.categories, category) ? point.categories[category] : emptyTotals) }))
+    : types.length ? fullPoints : fullPoints.map(point => ({ ...point, ...emptyTotals }));
+  $('history-heading').textContent = category ? `${typeLabel(category)} price history` : types.length ? 'Full shop price history' : 'No categories selected';
+  $('history-category').value = category || (types.length ? 'all' : '');
+  $('history-category-hint').hidden = types.length === 1;
+  $('history-category-hint').textContent = types.length > 1
+    ? 'Select single category to compare value of specific item types.' : 'Select a category to compare its historical value.';
+  if (selectedDate) selectDate(selectedDate); else draw();
+}
 
 function element(tag, attrs = {}, text) {
   const node = document.createElementNS(svgNS, tag);
@@ -119,6 +135,8 @@ $('history-date').addEventListener('change', () => {
 });
 $('history-range').addEventListener('change', draw);
 $('history-metric').addEventListener('change', () => { if (selectedDate) selectDate(selectedDate); });
+$('history-category').addEventListener('change', () => selectCategory($('history-category').value === 'all' ? null : $('history-category').value));
+document.addEventListener('shop:filters', applyCategory);
 new ResizeObserver(draw).observe($('history-chart'));
 document.addEventListener('shop:navigation', event => {
   const date = event.detail.date || points.at(-1)?.date;
@@ -127,10 +145,17 @@ document.addEventListener('shop:navigation', event => {
 
 async function loadHistory() {
   try {
-    const response = await fetch('/api/history?calculation=buyout-v3');
+    const response = await fetch('/api/history?calculation=categories-v4');
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'History could not be loaded.');
-    points = data.points;
+    fullPoints = data.points;
+    const control = $('history-category');
+    control.replaceChildren(new Option('Full shop', 'all'), new Option('No categories selected', ''));
+    control.options[1].hidden = true;
+    for (const type of data.types.sort((a, b) => typeLabel(a).localeCompare(typeLabel(b)))) control.add(new Option(typeLabel(type), type));
+    setAvailableTypes(data.types);
+    applyCategory();
+    control.disabled = false;
     archiveGapCount = data.gapCount;
     if (!points.length) { $('history-status').textContent = 'Historical shop data is being prepared.'; return; }
     $('history-status').textContent = `${number.format(points.length)} recorded days · ${data.earliest} onwards${data.gapCount ? ` · ${number.format(data.gapCount)} incomplete price records omitted` : ''}`;

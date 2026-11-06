@@ -6,7 +6,7 @@ import { join, resolve, sep } from 'node:path';
 import { normalizeArchiveShop, archiveSnapshot } from '../history-source.mjs';
 import { HistoryStore, captureDue, validDate } from '../history-store.mjs';
 import { dateFromPath, datePath } from '../public/date-route.js';
-import { selectOffers } from '../public/shop.js';
+import { selectOffers, normalizeShop } from '../public/shop.js';
 
 const cosmetic = (id, type = 'Outfit') => ({ itemKey: `fn:item:${id}`, name: id, type });
 const offer = (id, price, extra = {}) => ({ id, ...cosmetic(id), price: { amount: price, currency: 'V-Bucks' }, contents: [], ...extra });
@@ -91,6 +91,32 @@ test('stored history survives reopening the database and seeding is idempotent',
     assert.equal(reopened.get('2026-11-06').unpricedCount, 0);
     reopened.close();
   } finally {
+    if (!resolve(directory).startsWith(resolve(tmpdir()) + sep)) throw new Error('Unsafe temporary cleanup path.');
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('live category captures preserve bundle adjustment and backfill existing stored snapshots', async () => {
+  const shop = normalizeShop({ status: 200, data: { date: '2026-11-06T00:00:00Z', entries: [
+    { offerId: 'skin', finalPrice: 1500, brItems: [{ id: 'skin', name: 'Skin', type: { value: 'outfit' } }] },
+    { offerId: 'pack', finalPrice: 2000, bundle: { name: 'Pack' }, brItems: [{ id: 'skin', name: 'Skin', type: { value: 'outfit' } }] },
+  ] } });
+  const directory = await mkdtemp(join(tmpdir(), 'fortnite-category-test-'));
+  const filename = join(directory, 'history.sqlite');
+  let store = new HistoryStore(filename);
+  try {
+    store.recordLive(shop, new Date('2026-11-06T23:00:00Z'));
+    assert.equal(store.get('2026-11-06').categories.outfit.value, 2000);
+    assert.equal(store.get('2026-11-06').categories.outfit.listedValue, 3500);
+    assert.equal(store.list()[0].categories.bundle.value, 2000);
+    assert.equal(store.recordLive(shop, new Date('2026-11-06T23:05:00Z')), false);
+    store.db.exec('ALTER TABLE shops DROP COLUMN category_totals');
+    store.close();
+    store = new HistoryStore(filename);
+    assert.equal(store.get('2026-11-06').categories.outfit.value, 2000);
+    assert.equal(store.get('2026-11-06').finalized, 1);
+  } finally {
+    store.close();
     if (!resolve(directory).startsWith(resolve(tmpdir()) + sep)) throw new Error('Unsafe temporary cleanup path.');
     await rm(directory, { recursive: true, force: true });
   }

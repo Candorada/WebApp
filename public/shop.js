@@ -45,6 +45,18 @@ export function totals(offers, selectedTypes) {
   return selectOffers(offers, selectedTypes).totals;
 }
 
+export function categoryTotals(offers) {
+  return Object.fromEntries([...new Set(offers.flatMap(offer => offer.types))].sort().map(type => {
+    const selection = selectOffers(offers, new Set([type]));
+    return [type, {
+      value: selection.totals.value, count: selection.totals.count, unpricedCount: selection.totals.unpricedCount,
+      listedValue: selection.selected.reduce((sum, offer) => sum + (offer.price ?? 0), 0),
+      listedCount: selection.selected.length,
+      listedUnpricedCount: selection.selected.filter(offer => offer.price === null).length,
+    }];
+  }));
+}
+
 export function normalizeShop(payload) {
   const data = payload?.data;
   if (payload?.status !== 200 || !Array.isArray(data?.entries) || !Number.isFinite(Date.parse(data.date))) {

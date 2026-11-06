@@ -15,13 +15,26 @@ let pending;
 const snapshots = new Map();
 const formatted = value => value === null ? '—' : number.format(value);
 export const visibleDate = () => activeDate || shop?.shopDate.slice(0, 10);
+const availableTypes = new Set();
+let lastSelection;
 
 function announceDay() {
   document.dispatchEvent(new CustomEvent('shop:navigation', { detail: { date: visibleDate() } }));
 }
 
-function selectedTypes() {
-  return new Set(shop.offers.flatMap(offer => offer.types).filter(type => !excluded.has(type)));
+export function selectedTypes() {
+  return new Set([...availableTypes].filter(type => !excluded.has(type)));
+}
+
+export function setAvailableTypes(types) {
+  for (const type of types) availableTypes.add(type);
+  renderTypes();
+  renderOffers();
+}
+
+export function selectCategory(type) {
+  excluded = new Set(type ? [...availableTypes].filter(id => id !== type) : []);
+  saveFilters(); renderTypes(); renderOffers();
 }
 
 function saveFilters() {
@@ -29,8 +42,8 @@ function saveFilters() {
 }
 
 function renderTypes() {
-  const types = new Map();
-  for (const offer of shop.offers) {
+  const types = new Map([...availableTypes].map(id => [id, { label: typeLabel(id), count: 0 }]));
+  for (const offer of shop?.offers || []) {
     for (const id of offer.types) {
       const type = types.get(id) || { label: typeLabel(id), count: 0 };
       type.count++;
@@ -133,8 +146,13 @@ function offerCard(offer, coveredBy) {
 }
 
 function renderOffers() {
-  if (!shop) return;
   const selected = selectedTypes();
+  const key = JSON.stringify([...selected].sort());
+  if (lastSelection !== key) {
+    lastSelection = key;
+    document.dispatchEvent(new CustomEvent('shop:filters', { detail: { types: [...selected] } }));
+  }
+  if (!shop) return;
   const selection = selectOffers(shop.offers, selected);
   const summary = selection.totals;
   const incomplete = summary.unpricedCount > 0;
@@ -194,8 +212,7 @@ async function loadShop(refresh = false) {
     $('notice').textContent = shop.qualityReason || (stale ? `The provider's latest shop is dated ${day}. This result may be out of date; the app will keep checking.` : '');
     const checked = shop.fetchedAt && new Date(shop.fetchedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     $('updated').textContent = date ? `Viewing ${displayDate} · Filters apply to this shop` : `Checked ${checked} · Auto-refresh every minute`;
-    renderTypes();
-    renderOffers();
+    setAvailableTypes(shop.offers.flatMap(offer => offer.types));
     announceDay();
   } catch (error) {
     if (controller !== pending || controller.signal.aborted) return;
@@ -248,11 +265,11 @@ $('search').addEventListener('input', renderOffers);
 $('sort').addEventListener('change', renderOffers);
 $('select-all').addEventListener('click', () => {
   if (!shop) return;
-  excluded.clear(); saveFilters(); renderTypes(); renderOffers();
+  selectCategory(null);
 });
 $('select-none').addEventListener('click', () => {
   if (!shop) return;
-  excluded = new Set(shop.offers.flatMap(offer => offer.types));
+  excluded = new Set(availableTypes);
   saveFilters(); renderTypes(); renderOffers();
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !activeDate) loadShop(); });

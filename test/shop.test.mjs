@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeShop, totals, selectOffers } from '../public/shop.js';
+import { normalizeShop, totals, selectOffers, categoryTotals } from '../public/shop.js';
 
 const item = (id, type = 'outfit') => ({ id, name: id, type: { value: type } });
 const offer = (id, price, type = 'outfit') => ({ offerId: id, finalPrice: price, regularPrice: price, brItems: [item(id, type)] });
@@ -37,6 +37,26 @@ test('category selection includes bundles containing that type, once across mult
   assert.equal(totals(shop.offers, new Set(['emote'])).value, 500);
   assert.equal(totals(shop.offers, new Set(['outfit'])).value, 2000);
   assert.equal(totals(shop.offers, new Set(['outfit', 'pickaxe'])).value, 2000);
+});
+
+test('category history replaces matching accessories with bundles and tracks unknown prices separately', () => {
+  const shop = normalizeShop(feed([
+    offer('skin', 1500), offer('axe', 800, 'pickaxe'),
+    bundle('pack', 2000, [item('skin'), item('axe', 'pickaxe')]),
+    offer('dance', 500, 'emote'), offer('unknown', 100, 'emote'),
+  ]));
+  shop.offers.find(offer => offer.id === 'unknown').price = null;
+  const categories = categoryTotals(shop.offers);
+  assert.deepEqual(Object.keys(categories), ['bundle', 'emote', 'outfit', 'pickaxe']);
+  assert.equal(categories.outfit.value, 2000);
+  assert.equal(categories.outfit.listedValue, 3500);
+  assert.equal(categories.pickaxe.value, 2000);
+  assert.equal(categories.pickaxe.listedValue, 2800);
+  assert.equal(categories.pickaxe.count, 1);
+  assert.equal(categories.bundle.value, 2000);
+  assert.equal(categories.emote.value, 500);
+  assert.equal(categories.emote.unpricedCount, 1);
+  assert.equal(categories.emote.listedUnpricedCount, 1);
 });
 
 test('equal-content bundles keep the cheaper offer with a stable tie-break', () => {

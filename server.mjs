@@ -60,7 +60,8 @@ function serveHistory(request, response) {
   if (!history) { response.writeHead(503, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Historical storage is temporarily unavailable.' })); return; }
   if (!historyResponse || historyResponse.revision !== history.revision) {
     const points = history.list();
-    const body = Buffer.from(JSON.stringify({ points, earliest: points[0]?.date || null, latest: points.at(-1)?.date || null, gapCount: history.gapCount(), captureHourUTC: 23, calculation: 'buyout-v3' }));
+    const types = [...new Set(points.flatMap(point => Object.keys(point.categories)))].sort();
+    const body = Buffer.from(JSON.stringify({ points, types, earliest: points[0]?.date || null, latest: points.at(-1)?.date || null, gapCount: history.gapCount(), captureHourUTC: 23, calculation: 'categories-v4' }));
     historyResponse = { revision: history.revision, body, gzip: gzipSync(body), etag: 'W/"' + createHash('sha256').update(body).digest('hex') + '"' };
   }
   response.setHeader('Cache-Control', 'private, max-age=300, must-revalidate');

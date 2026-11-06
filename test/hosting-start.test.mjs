@@ -33,12 +33,18 @@ test('the app starts through the hosting CommonJS loader and serves its historic
     const archive = await (await fetch(`http://127.0.0.1:${port}/api/history/2017-10-26`)).json();
     assert.equal(archive.value, 5600);
     assert.equal(archive.snapshot.offers.length, 6);
+    assert.equal(archive.categories.outfit.value, 3800);
+    assert.equal(archive.categories.pickaxe.value, 1300);
+    const timeline = await (await fetch(`http://127.0.0.1:${port}/api/history?calculation=categories-v4`)).json();
+    assert.ok(timeline.types.includes('outfit') && timeline.types.includes('car'));
+    assert.equal(timeline.points.find(point => point.date === '2017-10-26').categories.glider.value, 500);
     const mayShop = await (await fetch(`http://127.0.0.1:${port}/api/history/2026-05-07`)).json();
     const bundleOffers = mayShop.snapshot.offers.filter(offer => offer.isBundle);
     assert.equal(bundleOffers.length, 28);
     assert.equal(bundleOffers.reduce((sum, offer) => sum + offer.price, 0), 58000);
     assert.equal(mayShop.value, 155800);
     assert.equal(mayShop.unpricedCount, 4);
+    assert.equal(mayShop.categories.bundle.value, 58000);
     assert.equal(mayShop.snapshot.totals.value, mayShop.value);
     assert.ok(archive.snapshot.offers.some(offer => offer.name === 'Ghoul Trooper' && offer.types.includes('outfit')));
     const headers = await fetch(`http://127.0.0.1:${port}/api/history/2017-10-26`);

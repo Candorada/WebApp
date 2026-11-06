@@ -37,6 +37,12 @@ for (const row of seed.rows) {
   assert.equal(selection.totals.value, row.value, `${row.date}: graph and shop totals differ`);
   assert.equal(selection.totals.unpricedCount, row.unpricedCount, `${row.date}: missing-price count differs`);
   assert.equal(row.listedCount, shop.offers.length, `${row.date}: incorrect item count`);
+  assert.deepEqual(Object.keys(row.categories).sort(), [...new Set(shop.offers.flatMap(offer => offer.types))].sort(), `${row.date}: missing category history`);
+  for (const [type, summary] of Object.entries(row.categories)) {
+    const category = selectOffers(shop.offers, new Set([type]));
+    assert.equal(summary.value, category.totals.value, `${row.date}: ${type} history differs from lineup`);
+    assert.equal(summary.unpricedCount, category.totals.unpricedCount, `${row.date}: ${type} missing prices differ`);
+  }
   assert.ok(!row.unpricedCount || row.qualityReason, `${row.date}: missing warning`);
 }
 const partial = seed.rows.filter(row => row.unpricedCount > 0);

@@ -42,6 +42,15 @@ shows its known V-Bucks subtotal and the number of unpriced listings.
 Every bundle counts unless both bundles have confirmed complete contents
 proving that one is fully covered. Component flags never suppress a bundle.
 
+The graph's item-type menu and the category checkboxes share their selection.
+A single selected type plots that category across the full archive, including
+matching purchase bundles at their full price. Missing categories on a date
+are zero. Multiple selected types show the full-shop graph with a reminder to
+select one category; totals are not added across categories because a bundle
+can match more than one. The default calculation is bundle-adjusted.
+Category series travel with the cached, compressed timeline, so switching
+categories does not fetch individual snapshots or call the upstream provider.
+
 Day URLs use UTC midnight Unix seconds, for example `/1508976000` for
 26 October 2017. Navigation, including Back/Forward and returning to the live
 shop at `/`, replaces client data without a document reload. Invalid or
