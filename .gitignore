@@ -10,3 +10,5 @@ node_modules/
 preview.png
 bundle-preview.png
 *.zip
+*.sqlite*
+data/*.tmp

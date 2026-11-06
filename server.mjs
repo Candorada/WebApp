@@ -1,7 +1,13 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 import { normalizeShop } from './public/shop.js';
+import { HistoryStore, validDate, captureDue } from './history-store.mjs';
 
 const host = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 const port = Number(process.env.PORT || 3000);
@@ -13,19 +19,30 @@ const files = new Map([
   ['/public/style.css', ['style.css', 'text/css; charset=utf-8']],
   ['/public/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/public/shop.js', ['shop.js', 'text/javascript; charset=utf-8']],
+  ['/public/history.js', ['history.js', 'text/javascript; charset=utf-8']],
 ]);
+let history;
+const hostingDomainRoot = fileURLToPath(import.meta.url).match(/^(\/home\/[^/]+\/domains\/[^/]+)\//)?.[1];
+try {
+  let seed;
+  try { seed = JSON.parse(await readFile(new URL('./data/history-seed.json', import.meta.url), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  history = new HistoryStore(join(process.env.HISTORY_DIR || join(hostingDomainRoot || homedir(), '.fortnite-shop-value'), 'history.sqlite'), seed);
+} catch (error) { console.error('Historical storage unavailable:', error.message); }
 let cached;
 let cacheUntil = 0;
 let pending;
 
-async function getShop() {
-  if (cached && Date.now() < cacheUntil) return cached;
+async function getShop(fresh = false) {
+  if (!fresh && cached && Date.now() < cacheUntil) return cached;
   if (!pending) {
     pending = (async () => {
       const response = await fetch(source, { signal: AbortSignal.timeout(15000) });
       if (!response.ok) throw new Error(`Shop provider returned HTTP ${response.status}.`);
       const result = normalizeShop(await response.json());
       cached = { ...result, fetchedAt: new Date().toISOString(), source };
+      try { history?.recordLive(cached); }
+      catch (error) { console.error('Could not save shop snapshot:', error.message); }
       const midnight = new Date();
       midnight.setUTCHours(24, 0, 0, 0);
       cacheUntil = Math.min(Date.now() + 60000, midnight.getTime());
@@ -33,6 +50,34 @@ async function getShop() {
     })().finally(() => { pending = undefined; });
   }
   return pending;
+}
+
+let historyResponse;
+function serveHistory(request, response) {
+  if (!history) { response.writeHead(503, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Historical storage is temporarily unavailable.' })); return; }
+  if (!historyResponse || historyResponse.revision !== history.revision) {
+    const points = history.list();
+    const body = Buffer.from(JSON.stringify({ points, earliest: points[0]?.date || null, latest: points.at(-1)?.date || null, gapCount: history.gapCount(), captureHourUTC: 23, calculation: 'bundle-aware-v1' }));
+    historyResponse = { revision: history.revision, body, gzip: gzipSync(body), etag: 'W/"' + createHash('sha256').update(body).digest('hex') + '"' };
+  }
+  response.setHeader('Cache-Control', 'private, max-age=300, must-revalidate');
+  response.setHeader('ETag', historyResponse.etag);
+  response.setHeader('Vary', 'Accept-Encoding');
+  if (request.headers['if-none-match'] === historyResponse.etag) { response.writeHead(304).end(); return; }
+  const compressed = /\bgzip\b/.test(request.headers['accept-encoding'] || '');
+  if (compressed) response.setHeader('Content-Encoding', 'gzip');
+  response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }).end(compressed ? historyResponse.gzip : historyResponse.body);
+}
+
+let captureRunning = false;
+async function captureScheduled() {
+  if (!history || captureRunning) return;
+  const now = new Date();
+  if (!captureDue(history.get(now.toISOString().slice(0, 10)), now)) return;
+  captureRunning = true;
+  try { await getShop(true); }
+  catch (error) { console.error('Scheduled shop capture failed; will retry:', error.message); }
+  finally { captureRunning = false; }
 }
 
 const server = createServer(async (request, response) => {
@@ -45,7 +90,20 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (pathname === '/api/health') {
-    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ app: 'fortnite-shop-value' }));
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ app: 'fortnite-shop-value', historyReady: Boolean(history), historyDays: history?.list().length || 0, historyStorage: process.env.HISTORY_DIR ? 'configured' : hostingDomainRoot ? 'domain' : 'home' }));
+    return;
+  }
+  if (pathname === '/api/history') {
+    if (history && !history.get(new Date().toISOString().slice(0, 10))) {
+      try { await getShop(); } catch { /* Archived days remain available during a live-feed outage. */ }
+    }
+    serveHistory(request, response); return;
+  }
+  if (pathname.startsWith('/api/history/')) {
+    const date = pathname.slice('/api/history/'.length);
+    if (!validDate(date)) { response.writeHead(400).end('Invalid date'); return; }
+    const row = history?.get(date);
+    response.writeHead(row ? 200 : 404, { 'Content-Type': 'application/json' }).end(JSON.stringify(row ? { ...row, snapshot: history.snapshot(date) } : { error: 'No complete price record for this date.' }));
     return;
   }
   if (pathname === '/api/shop') {
@@ -96,4 +154,6 @@ server.on('error', async error => {
 server.listen(port, host, () => {
   console.log(`Fortnite Shop Value: ${url}\nKeep this window open. Press Ctrl+C to stop.`);
   openBrowser();
+  captureScheduled();
 });
+setInterval(captureScheduled, 60000).unref();

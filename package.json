@@ -5,10 +5,11 @@
   "type": "module",
   "main": "server.js",
   "description": "Current Fortnite item shop value with item-type toggles.",
-  "engines": { "node": ">=22" },
+  "engines": { "node": ">=24" },
   "scripts": {
     "start": "node server.js",
     "start:desktop": "node server.mjs --open",
-    "test": "node --test"
+    "test": "node --test",
+    "import:history": "node scripts/import-history.mjs"
   }
 }
