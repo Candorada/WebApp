@@ -96,6 +96,7 @@ export function normalizeShop(payload) {
       typeLabel: labels[type] || first?.type?.displayValue || type,
       types,
       itemIds,
+      itemTypes: Object.fromEntries(contents.map(({ group, item }) => [`${group}:${item.id.toLowerCase()}`, group === 'brItems' ? item.type?.value || 'other' : group === 'tracks' ? 'track' : group === 'instruments' ? 'instrument' : 'car'])),
       isBundle,
       bundleOnly: Boolean(entry.cars?.length && !isBundle),
       price: entry.finalPrice,

@@ -1,6 +1,7 @@
-import { navigateDate, visibleDate, selectedTypes, setAvailableTypes, selectCategory } from './app.js';
+import { navigateDate, visibleDate, selectedTypes, setAvailableTypes, selectCategory, newItemsOnly } from './app.js';
 import { typeLabel } from './shop.js';
 import { timeTicks } from './history-axis.js';
+import { tokenHistory } from './arrivals.js';
 
 const $ = id => document.getElementById(id);
 const number = new Intl.NumberFormat('en-US');
@@ -15,13 +16,26 @@ let archiveGapCount = 0;
 const metric = () => $('history-metric').value;
 const unpriced = point => (metric() === 'value' ? point.unpricedCount : point.listedUnpricedCount) || 0;
 const emptyTotals = { value: 0, count: 0, unpricedCount: 0, listedValue: 0, listedCount: 0, listedUnpricedCount: 0 };
+try { $('token-value').checked = localStorage.getItem('fortnite-shop-token-value') === '1'; } catch { /* The graph works without saved preferences. */ }
+const tokenMode = () => $('token-value').checked;
+const partialValue = point => unpriced(point) || (point.token && point.token.availableDays < 14);
 
 function applyCategory() {
   const types = [...selectedTypes()];
   const category = types.length === 1 ? types[0] : null;
-  points = category ? fullPoints.map(point => ({ ...point, ...(Object.hasOwn(point.categories, category) ? point.categories[category] : emptyTotals) }))
-    : types.length ? fullPoints : fullPoints.map(point => ({ ...point, ...emptyTotals }));
-  $('history-heading').textContent = category ? `${typeLabel(category)} price history` : types.length ? 'Full shop price history' : 'No categories selected';
+  if (tokenMode()) points = tokenHistory(fullPoints, category);
+  else points = fullPoints.map(point => {
+    const source = newItemsOnly() ? point.arrivals : point;
+    const stats = category ? source?.categories?.[category] || emptyTotals : source || emptyTotals;
+    return { ...point, ...stats, comparisonUnavailable: newItemsOnly() && !source?.available };
+  });
+  if (!types.length) points = points.map(point => ({ ...point, ...emptyTotals }));
+  const subject = category ? typeLabel(category) : 'Full shop';
+  $('history-heading').textContent = !types.length ? 'No categories selected' : tokenMode() ? `${subject} · 14-day token value` : newItemsOnly() ? `${subject} · daily additions` : `${subject} price history`;
+  $('history-mode-note').textContent = tokenMode()
+    ? 'Token value = the selected start day’s full shop + additions on the following 13 days. Returning items count again when re-added. New items only still controls the item list.'
+    : newItemsOnly() ? 'Daily additions are items absent from the previous UTC day, including returning items. Matching bundle prices count in full.' : '';
+  $('history-mode-note').hidden = !tokenMode() && !newItemsOnly();
   $('history-category').value = category || (types.length ? 'all' : '');
   $('history-category-hint').hidden = types.length === 1;
   $('history-category-hint').textContent = types.length > 1
@@ -43,8 +57,8 @@ function selectDate(date) {
   $('history-date').value = date;
   $('history-selected-date').textContent = displayDate(date);
   const point = points.find(point => point.date === date);
-  $('history-value').textContent = point ? number.format(point[metric()]) : '—';
-  $('history-unit').textContent = point && unpriced(point) ? 'V-BUCKS · KNOWN PRICES' : 'V-BUCKS';
+  $('history-value').textContent = point && !point.comparisonUnavailable ? number.format(point[metric()]) : '—';
+  $('history-unit').textContent = point?.comparisonUnavailable ? 'COMPARISON UNAVAILABLE' : point?.token?.availableDays < 14 ? 'V-BUCKS · PARTIAL WINDOW' : point && unpriced(point) ? 'V-BUCKS · KNOWN PRICES' : 'V-BUCKS';
   $('history-source').hidden = !point;
   if (!point) {
     $('history-detail').textContent = 'No complete price record for this date. A total has not been estimated.';
@@ -54,7 +68,11 @@ function selectDate(date) {
     const timing = point.source === 'itemshop.gg'
       ? 'Archived shop' + (point.exact ? '' : ` · carried forward from ${point.sourceDate}`)
       : point.finalized ? `Saved ${new Date(point.capturedAt).toLocaleTimeString(undefined, { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false })} UTC` : 'Provisional snapshot';
-    if (unpriced(point)) {
+    if (point.comparisonUnavailable) {
+      $('history-detail').textContent = point.arrivals?.reason || 'The previous day’s snapshot is unavailable.';
+    } else if (point.token) {
+      $('history-detail').textContent = `${date} to ${point.token.endDate} · ${point.token.availableDays}/14 days available${unpriced(point) ? ` · ${unpriced(point)} unpriced listings excluded` : ''}${point.token.availableDays < 14 ? ' · Future or missing days are not included in this known subtotal.' : ''}`;
+    } else if (unpriced(point)) {
       $('history-detail').textContent = `Known price subtotal · ${unpriced(point)} unpriced listings excluded · ${timing} · Possible mistakes for this day`;
     } else {
       const count = metric() === 'value' ? point.count : point.listedCount;
@@ -71,8 +89,9 @@ function draw() {
   const days = Number($('history-range').value);
   const cutoff = Number.isFinite(days) ? timestamp(points.at(-1).date) - (days - 1) * 86400000 : -Infinity;
   visible = points.filter(point => timestamp(point.date) >= cutoff);
-  const partial = visible.filter(point => unpriced(point));
-  $('history-status').textContent = `${number.format(points.length)} selectable dates · ${number.format(visible.length - partial.length)} totals with all prices · ${number.format(partial.length)} known-price subtotals in this view · ${points[0].date} onwards${archiveGapCount ? ` · ${archiveGapCount} unavailable source records` : ''}`;
+  const unavailable = visible.filter(point => point.comparisonUnavailable);
+  const partial = visible.filter(point => !point.comparisonUnavailable && partialValue(point));
+  $('history-status').textContent = `${number.format(points.length)} selectable dates · ${number.format(visible.length - partial.length - unavailable.length)} complete values · ${number.format(partial.length)} partial values${unavailable.length ? ` · ${number.format(unavailable.length)} daily comparisons unavailable` : ''} in this view · ${points[0].date} onwards${archiveGapCount ? ` · ${archiveGapCount} unavailable source records` : ''}`;
   const width = Math.max(320, chart.clientWidth || 900);
   const height = 320;
   if (!visible.length) { chart.replaceChildren(element('text', { x: 20, y: 80, class: 'history-axis' }, 'No complete totals for this range.')); chartBounds = null; return; }
@@ -113,9 +132,16 @@ function draw() {
   let path = '';
   let previous;
   for (const point of visible) {
-    if (unpriced(point)) {
+    if (point.comparisonUnavailable) {
+      const marker = element('circle', { cx: x(point), cy: y(point), r: 3, class: 'history-missing' });
+      marker.append(element('title', {}, `${point.date}: previous day unavailable`));
+      chart.append(marker);
+      previous = undefined;
+      continue;
+    }
+    if (partialValue(point)) {
       const marker = element('circle', { cx: x(point), cy: y(point), r: 2.5, class: 'history-fallback' });
-      marker.append(element('title', {}, `${point.date}: ${number.format(point[metric()])} V-Bucks known subtotal; ${unpriced(point)} unpriced listings`));
+      marker.append(element('title', {}, `${point.date}: ${number.format(point[metric()])} V-Bucks known subtotal${point.token ? `; ${point.token.availableDays}/14 days` : `; ${unpriced(point)} unpriced listings`}`));
       chart.append(marker);
     }
     const gap = previous && timestamp(point.date) - timestamp(previous.date) > 86400000;
@@ -129,7 +155,7 @@ function draw() {
     const labelX = Math.max(padding.left + labelWidth / 2, Math.min(width - padding.right - labelWidth / 2, x(selected)));
     const labelY = height - 8;
     chart.append(element('line', { x1: x(selected), x2: x(selected), y1: padding.top, y2: labelY - 16, class: 'history-guide' }));
-    chart.append(element('circle', { cx: x(selected), cy: y(selected), r: 5, class: unpriced(selected) ? 'history-marker history-fallback' : 'history-marker' }));
+    chart.append(element('circle', { cx: x(selected), cy: y(selected), r: 5, class: selected.comparisonUnavailable ? 'history-marker history-missing' : partialValue(selected) ? 'history-marker history-fallback' : 'history-marker' }));
     chart.append(element('rect', { x: labelX - labelWidth / 2, y: labelY - 16, width: labelWidth, height: 22, rx: 4, class: 'history-date-badge' }));
     chart.append(element('text', { x: labelX, y: labelY - 1, 'text-anchor': 'middle', class: 'history-selected-label' }, selectedDate));
   }
@@ -156,6 +182,10 @@ $('history-date').addEventListener('change', () => {
 $('history-range').addEventListener('change', draw);
 $('history-metric').addEventListener('change', () => { if (selectedDate) selectDate(selectedDate); });
 $('history-category').addEventListener('change', () => selectCategory($('history-category').value === 'all' ? null : $('history-category').value));
+$('token-value').addEventListener('change', () => {
+  try { localStorage.setItem('fortnite-shop-token-value', tokenMode() ? '1' : '0'); } catch { /* Keep the graph mode in memory. */ }
+  applyCategory();
+});
 document.addEventListener('shop:filters', applyCategory);
 new ResizeObserver(draw).observe($('history-chart'));
 document.addEventListener('shop:navigation', event => {
@@ -165,7 +195,7 @@ document.addEventListener('shop:navigation', event => {
 
 async function loadHistory() {
   try {
-    const response = await fetch('/api/history?calculation=categories-v4');
+    const response = await fetch('/api/history?calculation=daily-arrivals-v5');
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'History could not be loaded.');
     fullPoints = data.points;

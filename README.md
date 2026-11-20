@@ -51,6 +51,21 @@ can match more than one. The default calculation is bundle-adjusted.
 Category series travel with the cached, compressed timeline, so switching
 categories does not fetch individual snapshots or call the upstream provider.
 
+“New items only” compares cosmetic identities with the previous UTC shop day.
+Returning items count; repricing and changed offer IDs do not. A matching
+bundle is charged at its full price and replaces covered accessories. Mixed
+bundles are attributed to the categories of their newly added contents.
+Where contents are missing, section membership and stable listing identities
+provide an explicitly estimated comparison. Missing previous snapshots produce
+an unavailable comparison rather than treating every item as new.
+
+The graph-only “14-day token value” uses the selected date's full shop value
+plus the following 13 days of daily additions. Reappearing items can contribute
+again under this formula. The selected category and price calculation apply
+to every contribution. Future days, missing snapshots, and missing prices
+remain visibly flagged; the graph shows the known subtotal and available-day
+count for incomplete windows. Both modes use the already loaded timeline.
+
 Day URLs use UTC midnight Unix seconds, for example `/1508976000` for
 26 October 2017. Navigation, including Back/Forward and returning to the live
 shop at `/`, replaces client data without a document reload. Invalid or

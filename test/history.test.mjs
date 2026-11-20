@@ -110,10 +110,12 @@ test('live category captures preserve bundle adjustment and backfill existing st
     assert.equal(store.get('2026-11-06').categories.outfit.listedValue, 3500);
     assert.equal(store.list()[0].categories.bundle.value, 2000);
     assert.equal(store.recordLive(shop, new Date('2026-11-06T23:05:00Z')), false);
-    store.db.exec('ALTER TABLE shops DROP COLUMN category_totals');
+    store.db.exec('ALTER TABLE shops DROP COLUMN category_totals; ALTER TABLE shops DROP COLUMN arrival_totals');
     store.close();
     store = new HistoryStore(filename);
     assert.equal(store.get('2026-11-06').categories.outfit.value, 2000);
+    assert.equal(store.get('2026-11-06').arrivals.available, true);
+    assert.equal(store.get('2026-11-06').arrivals.categories.outfit.value, 2000);
     assert.equal(store.get('2026-11-06').finalized, 1);
   } finally {
     store.close();

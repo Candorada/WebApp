@@ -5,6 +5,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { createInterface } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
 import { normalizeArchiveShop, archiveSnapshot } from '../history-source.mjs';
+import { annotateArrivals } from '../public/arrivals.js';
 
 const cachedOnly = process.argv.includes('--cached');
 let key = process.env.ITEMSHOP_API_KEY;
@@ -65,6 +66,14 @@ async function worker() {
 }
 await Promise.all(Array.from({ length: 6 }, worker));
 rows.sort((a, b) => a.date.localeCompare(b.date));
+let previous;
+for (const row of rows) {
+  const file = new URL(row.date + '.json.gz', snapshots);
+  const snapshot = annotateArrivals(JSON.parse(gunzipSync(await readFile(file))), previous);
+  row.arrivals = snapshot.arrivals;
+  await writeFile(file, gzipSync(JSON.stringify(snapshot)));
+  previous = snapshot;
+}
 const output = new URL('../data/history-seed.json', import.meta.url);
 await mkdir(new URL('../data/', import.meta.url), { recursive: true });
 const seed = { version: 1, provider: 'itemshop.gg', importedAt: new Date().toISOString(), rows, gaps };

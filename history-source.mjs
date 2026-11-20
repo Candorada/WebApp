@@ -48,6 +48,7 @@ export function archiveSnapshot(payload, date) {
         regularPrice: Number.isSafeInteger(item.price?.regular) ? item.price.regular : price,
         isBundle: Boolean(isBundle), bundleOnly: !isBundle && (included || isCar),
         itemIds, types: [...new Set(types)],
+        itemTypes: Object.fromEntries(contents.filter(content => content.itemKey).map(content => [content.itemKey.toLowerCase(), category(content)])),
         section: section.title || null, bundles: [],
         coverageUnknown: missingIdentity || (Boolean(isBundle) && !contents.length),
         items: contents.map(content => content.name).filter(Boolean),

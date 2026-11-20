@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 import { selectOffers } from '../public/shop.js';
+import { annotateArrivals, dayAfter, tokenHistory } from '../public/arrivals.js';
 
 const seed = JSON.parse(await readFile(new URL('../data/history-seed.json', import.meta.url)));
 const dates = new Set(seed.rows.map(row => row.date));
@@ -11,6 +12,7 @@ for (let day = Date.parse(seed.rows[0].date); day <= Date.parse(seed.rows.at(-1)
   if (!dates.has(date)) missingDates.push(date);
 }
 let linkedItems = 0;
+let previousShop;
 for (const row of seed.rows) {
   const shop = JSON.parse(gunzipSync(await readFile(new URL(`../data/history-shops/${row.date}.json.gz`, import.meta.url))));
   const bundles = new Set(shop.offers.filter(offer => offer.isBundle).map(offer => offer.id));
@@ -44,6 +46,14 @@ for (const row of seed.rows) {
     assert.equal(summary.unpricedCount, category.totals.unpricedCount, `${row.date}: ${type} missing prices differ`);
   }
   assert.ok(!row.unpricedCount || row.qualityReason, `${row.date}: missing warning`);
+  const comparison = annotateArrivals(shop, previousShop).arrivals;
+  assert.equal(comparison.available, dates.has(dayAfter(row.date, -1)), `${row.date}: invalid comparison availability`);
+  assert.deepEqual(row.arrivals, comparison, `${row.date}: arrivals graph differs from item list`);
+  previousShop = shop;
+}
+for (const point of tokenHistory(seed.rows)) {
+  assert.ok(Number.isSafeInteger(point.value) && point.value >= seed.rows.find(row => row.date === point.date).value, `${point.date}: token value lost starting shop prices`);
+  assert.ok(point.token.availableDays >= 1 && point.token.availableDays <= 14, `${point.date}: invalid token window`);
 }
 const partial = seed.rows.filter(row => row.unpricedCount > 0);
 const listedPartial = seed.rows.filter(row => row.listedUnpricedCount > 0);

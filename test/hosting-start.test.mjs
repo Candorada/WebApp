@@ -35,6 +35,12 @@ test('the app starts through the hosting CommonJS loader and serves its historic
     assert.equal(archive.snapshot.offers.length, 6);
     assert.equal(archive.categories.outfit.value, 3800);
     assert.equal(archive.categories.pickaxe.value, 1300);
+    assert.equal(archive.arrivals.available, false);
+    const nextDay = await (await fetch(`http://127.0.0.1:${port}/api/history/2017-10-27`)).json();
+    assert.equal(nextDay.arrivals.value, 3300);
+    assert.equal(nextDay.arrivals.comparisonDate, '2017-10-26');
+    assert.equal(nextDay.snapshot.offers.filter(offer => offer.arrivalTypes.length).length, 4);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/public/arrivals.js`)).status, 200);
     const timeline = await (await fetch(`http://127.0.0.1:${port}/api/history?calculation=categories-v4`)).json();
     assert.ok(timeline.types.includes('outfit') && timeline.types.includes('car'));
     assert.equal(timeline.points.find(point => point.date === '2017-10-26').categories.glider.value, 500);

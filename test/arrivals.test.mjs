@@ -1,0 +1,68 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { normalizeShop, selectOffers } from '../public/shop.js';
+import { annotateArrivals, arrivalOffers, dayAfter, tokenHistory, emptySummary } from '../public/arrivals.js';
+
+const item = (id, type = 'outfit') => ({ id, name: id, type: { value: type } });
+const single = (id, price, type = 'outfit') => ({ offerId: `listing-${id}-${price}`, finalPrice: price, brItems: [item(id, type)] });
+const pack = (id, price, contents) => ({ offerId: id, finalPrice: price, bundle: { name: id }, brItems: contents });
+const shop = (date, entries) => normalizeShop({ status: 200, data: { date: date + 'T00:00:00Z', entries } });
+
+test('daily additions include returning items but ignore repricing, offer-ID changes and source prefixes', () => {
+  const previous = shop('2026-11-18', [single('skin', 1000)]);
+  previous.offers[0].itemIds = ['fn:item:SKIN'];
+  const current = annotateArrivals(shop('2026-11-19', [single('skin', 1200), single('axe', 800, 'pickaxe')]), previous);
+  assert.equal(current.arrivals.value, 800);
+  assert.equal(current.arrivals.count, 1);
+  assert.deepEqual(arrivalOffers(current.offers).map(offer => offer.name), ['axe']);
+  const absent = shop('2026-11-19', []);
+  const returning = annotateArrivals(shop('2026-11-20', [single('skin', 1000)]), absent);
+  assert.equal(returning.arrivals.value, 1000);
+});
+
+test('a bundle containing a new accessory replaces it and is attributed to the new category only', () => {
+  const previous = shop('2026-11-18', [single('skin', 1500)]);
+  const current = annotateArrivals(shop('2026-11-19', [single('skin', 1500), single('axe', 800, 'pickaxe'), pack('pack', 2000, [item('skin'), item('axe', 'pickaxe')])]), previous);
+  assert.equal(current.arrivals.value, 2000);
+  assert.equal(current.arrivals.categories.pickaxe.value, 2000);
+  assert.equal(current.arrivals.categories.outfit, undefined);
+  assert.equal(current.arrivals.categories.bundle.value, 2000);
+  const selection = selectOffers(arrivalOffers(current.offers));
+  assert.equal(selection.coveredBy.has('listing-axe-800'), true);
+  assert.equal(selection.counted.length, 1);
+  const repackaged = annotateArrivals(shop('2026-11-20', [pack('new-pack-id', 2500, [item('skin'), item('axe', 'pickaxe')])]), current);
+  assert.equal(repackaged.arrivals.value, 0);
+});
+
+test('unknown-content bundles use stable listing identities rather than their changing prices', () => {
+  const before = shop('2026-11-18', [pack('same-pack', 2000, [])]);
+  const after = annotateArrivals(shop('2026-11-19', [pack('same-pack', 1800, [])]), before);
+  assert.equal(after.arrivals.value, 0);
+});
+
+test('missing previous days are unavailable comparisons rather than all-new shops or zero totals', () => {
+  const current = annotateArrivals(shop('2026-11-20', [single('skin', 1500)]), shop('2026-11-18', []));
+  assert.equal(current.arrivals.available, false);
+  assert.equal(current.arrivals.comparisonDate, '2026-11-19');
+  assert.match(current.arrivals.reason, /unavailable/);
+  assert.deepEqual(arrivalOffers(current.offers), []);
+});
+
+test('token value is the starting shop plus exactly 13 following daily additions, with category support', () => {
+  const points = Array.from({ length: 14 }, (_, i) => ({
+    date: dayAfter('2026-10-01', i), ...emptySummary, value: i ? 50000 : 1000,
+    categories: { pickaxe: { ...emptySummary, value: 100 } },
+    arrivals: { ...emptySummary, available: true, value: i * 10, categories: { pickaxe: { ...emptySummary, value: i } } },
+  }));
+  const tokens = tokenHistory(points);
+  assert.equal(tokens[0].value, 1910);
+  assert.equal(tokens[0].token.availableDays, 14);
+  assert.equal(tokens[0].token.endDate, '2026-10-14');
+  assert.equal(tokenHistory(points, 'pickaxe')[0].value, 191);
+  assert.equal(tokens.at(-1).value, 50000);
+  assert.equal(tokens.at(-1).token.availableDays, 1);
+  points[7].arrivals.available = false;
+  const partial = tokenHistory(points)[0];
+  assert.equal(partial.token.availableDays, 13);
+  assert.equal(partial.value, 1840);
+});

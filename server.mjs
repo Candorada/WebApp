@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { normalizeShop } from './public/shop.js';
 import { HistoryStore, validDate, captureDue } from './history-store.mjs';
 import { dateFromPath, datePath } from './public/date-route.js';
+import { annotateArrivals } from './public/arrivals.js';
 
 const host = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 const port = Number(process.env.PORT || 3000);
@@ -23,6 +24,7 @@ const files = new Map([
   ['/public/shop.js', ['shop.js', 'text/javascript; charset=utf-8']],
   ['/public/history.js', ['history.js', 'text/javascript; charset=utf-8']],
   ['/public/history-axis.js', ['history-axis.js', 'text/javascript; charset=utf-8']],
+  ['/public/arrivals.js', ['arrivals.js', 'text/javascript; charset=utf-8']],
   ['/public/date-route.js', ['date-route.js', 'text/javascript; charset=utf-8']],
 ]);
 let history;
@@ -45,6 +47,7 @@ async function getShop(fresh = false) {
       if (!response.ok) throw new Error(`Shop provider returned HTTP ${response.status}.`);
       const result = normalizeShop(await response.json());
       cached = { ...result, fetchedAt: new Date().toISOString(), source };
+      if (history) history.prepareShop(cached); else annotateArrivals(cached);
       try { history?.recordLive(cached); }
       catch (error) { console.error('Could not save shop snapshot:', error.message); }
       const midnight = new Date();
@@ -62,7 +65,7 @@ function serveHistory(request, response) {
   if (!historyResponse || historyResponse.revision !== history.revision) {
     const points = history.list();
     const types = [...new Set(points.flatMap(point => Object.keys(point.categories)))].sort();
-    const body = Buffer.from(JSON.stringify({ points, types, earliest: points[0]?.date || null, latest: points.at(-1)?.date || null, gapCount: history.gapCount(), captureHourUTC: 23, calculation: 'categories-v4' }));
+    const body = Buffer.from(JSON.stringify({ points, types, earliest: points[0]?.date || null, latest: points.at(-1)?.date || null, gapCount: history.gapCount(), captureHourUTC: 23, calculation: 'daily-arrivals-v5' }));
     historyResponse = { revision: history.revision, body, gzip: gzipSync(body), etag: 'W/"' + createHash('sha256').update(body).digest('hex') + '"' };
   }
   response.setHeader('Cache-Control', 'private, max-age=300, must-revalidate');
