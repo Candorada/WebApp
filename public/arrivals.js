@@ -1,7 +1,7 @@
 import { selectOffers, categoryTotals } from './shop.js';
 
 export const emptySummary = { value: 0, count: 0, unpricedCount: 0, listedValue: 0, listedCount: 0, listedUnpricedCount: 0 };
-export const arrivalCalculation = 'daily-arrivals-v6';
+export const arrivalCalculation = 'daily-arrivals-v7';
 export const dayAfter = (date, offset = 1) => new Date(Date.parse(date.slice(0, 10) + 'T00:00:00Z') + offset * 86400000).toISOString().slice(0, 10);
 export const itemIdentity = id => id.toLowerCase().replace(/^(?:fn:(?:item|track|instrument|car):|britems:|tracks:|instruments:|cars:)/, '');
 
@@ -10,14 +10,41 @@ function listingIdentity(offer) {
   return offer.id.toLowerCase();
 }
 
-function groupListings(offers) {
-  const groups = new Map();
-  for (const offer of offers) {
-    const id = listingIdentity(offer);
-    if (!groups.has(id)) groups.set(id, []);
-    groups.get(id).push(offer);
+function matchKeys(name, image, id) {
+  const keys = [];
+  const normalizedName = name?.normalize('NFKC').trim().toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, ' ');
+  if (normalizedName) keys.push('name:' + normalizedName);
+  if (image && URL.canParse(image)) {
+    const url = new URL(image);
+    if (url.protocol === 'https:' || url.protocol === 'http:') {
+      const path = url.hostname === 'cdn.source.gs'
+        ? url.pathname.replace(/-(?:128|256|512|1024|2048)(?=\.(?:png|webp|jpe?g)$)/i, '')
+        : url.pathname;
+      keys.push('image:' + url.host + path);
+    }
   }
-  return groups;
+  if (id) keys.push('id:' + itemIdentity(id));
+  return keys;
+}
+
+function listingKeys(offer) {
+  const kind = offer.isBundle ? 'bundle:' : 'item:';
+  return matchKeys(offer.name, offer.image, listingIdentity(offer)).map(key => kind + key);
+}
+
+function contents(offer) {
+  if (!offer.itemIds.length) {
+    return offer.items.map(name => ({ name, keys: matchKeys(name) }));
+  }
+  return offer.itemIds.map((id, index) => {
+    const name = offer.itemNames?.[id] ?? (offer.items.length === offer.itemIds.length ? offer.items[index] : undefined);
+    const image = offer.itemImages?.[id] ?? (!offer.isBundle && offer.itemIds.length === 1 ? offer.image : undefined);
+    return { id, name, keys: matchKeys(name, image, id) };
+  });
+}
+
+function hasContents(offer) {
+  return offer.itemIds.length > 0 || offer.items.some(name => name !== offer.name);
 }
 
 function itemType(offer, id) {
@@ -49,45 +76,53 @@ export function annotateArrivals(shop, previous) {
     shop.arrivals = { ...emptySummary, categories: {}, available: false, comparisonDate, reason: `The shop snapshot for ${comparisonDate} is unavailable, so daily additions cannot be determined.` };
     return shop;
   }
-  const previousItems = new Set(previous.offers.flatMap(offer => offer.itemIds.map(itemIdentity)));
-  const previousListings = groupListings(previous.offers);
+  const previousItems = new Set();
+  const previousListings = new Map();
   let estimated = previous.offers.some(offer => offer.coverageUnknown);
   for (const offer of previous.offers) {
-    if (!offer.isBundle && !offer.itemIds.length) previousItems.add(itemIdentity(listingIdentity(offer)));
+    for (const item of contents(offer)) for (const key of item.keys) previousItems.add(key);
+    if (!offer.isBundle) {
+      for (const key of matchKeys(offer.name, offer.image, listingIdentity(offer))) previousItems.add(key);
+    }
+    for (const key of listingKeys(offer)) {
+      if (!previousListings.has(key)) previousListings.set(key, []);
+      previousListings.get(key).push(offer);
+    }
   }
+  const entries = shop.offers.map(offer => ({
+    offer,
+    items: contents(offer),
+    previous: [...new Set(listingKeys(offer).flatMap(key => previousListings.get(key) || []))],
+  }));
   // A richer snapshot can reveal contents for a listing that was already present.
-  for (const [id, offers] of groupListings(shop.offers)) {
-    const matches = previousListings.get(id);
-    if (offers.length !== 1 || matches?.length !== 1) continue;
-    const old = matches[0];
-    const current = offers[0];
-    if (old.isBundle !== current.isBundle || old.itemIds.length || !current.itemIds.length) continue;
-    for (const itemId of current.itemIds) previousItems.add(itemIdentity(itemId));
+  for (const entry of entries) {
+    if (!entry.previous.length || entry.previous.some(hasContents) || !hasContents(entry.offer)) continue;
+    for (const item of entry.items) for (const key of item.keys) previousItems.add(key);
     estimated = true;
   }
-  for (const offer of shop.offers) {
-    const added = offer.itemIds.filter(id => !previousItems.has(itemIdentity(id)));
-    for (const id of added) {
-      const type = itemType(offer, id);
+  for (const { offer, items, previous: matches } of entries) {
+    if (!offer.isBundle && items.length <= 1 && matches.length) continue;
+    const added = hasContents(offer) ? items.filter(item => item.keys.length && !item.keys.some(key => previousItems.has(key))) : [];
+    for (const { id } of added) {
+      const type = id ? itemType(offer, id) : null;
       if (type) offer.arrivalTypes.push(type);
       else { offer.arrivalTypes.push(...offer.types.filter(type => type !== 'bundle')); estimated = true; }
     }
     if (added.length && offer.isBundle) offer.arrivalTypes.push('bundle');
-    if (!offer.isBundle && !offer.itemIds.length) {
-      const id = listingIdentity(offer);
-      if (!previousListings.has(id) && !previousItems.has(itemIdentity(id))) {
+    if (!offer.isBundle && !hasContents(offer)) {
+      if (!matchKeys(offer.name, offer.image, listingIdentity(offer)).some(key => previousItems.has(key))) {
         offer.arrivalTypes.push(...offer.types);
         estimated = true;
       }
     }
   }
-  for (const bundle of shop.offers.filter(offer => offer.isBundle)) {
-    if (bundle.itemIds.length && !bundle.coverageUnknown) continue;
-    if (previousListings.has(listingIdentity(bundle))) continue;
+  for (const { offer: bundle, previous: matches } of entries.filter(entry => entry.offer.isBundle)) {
+    if (hasContents(bundle)) continue;
+    if (matches.length) continue;
     const related = shop.offers.filter(offer => !offer.isBundle && offer.bundles?.includes(bundle.id));
     const newTypes = related.flatMap(offer => offer.arrivalTypes);
     if (newTypes.length) { bundle.arrivalTypes.push(...newTypes, 'bundle'); estimated = true; }
-    else if (!bundle.itemIds.length && !related.length) {
+    else if (!related.length) {
       bundle.arrivalTypes.push(...bundle.types); estimated = true;
     }
   }

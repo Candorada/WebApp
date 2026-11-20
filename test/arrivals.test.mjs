@@ -40,6 +40,28 @@ test('unknown-content bundles use stable listing identities rather than their ch
   assert.equal(after.arrivals.value, 0);
 });
 
+test('matching names or asset URLs are each sufficient despite changed IDs', () => {
+  const previous = shop('2026-07-31', [
+    { ...single('old-mic', 800, 'pickaxe'), brItems: [{ ...item('old-mic', 'pickaxe'), name: 'Lil World Mic' }] },
+    { ...single('old-wrap', 500, 'wrap'), brItems: [{ ...item('old-wrap', 'wrap'), images: { icon: 'https://cdn.source.gs/item-512.webp?v=1' } }] },
+  ]);
+  const current = annotateArrivals(shop('2026-08-01', [
+    { ...single('new-mic', 800, 'instrument'), brItems: [{ ...item('new-mic', 'instrument'), name: '  LIL WORLD MIC ' }] },
+    { ...single('new-wrap', 500, 'wrap'), brItems: [{ ...item('new-wrap', 'wrap'), images: { icon: 'https://cdn.source.gs/item-128.webp?v=2' } }] },
+    single('different', 300),
+  ]), previous);
+  assert.deepEqual(arrivalOffers(current.offers).map(offer => offer.name), ['different']);
+  assert.equal(current.arrivals.value, 300);
+});
+
+test('renumbered bundle contents match previous standalone items by name', () => {
+  const previous = shop('2026-07-31', [single('mic', 800, 'pickaxe')]);
+  const current = annotateArrivals(shop('2026-08-01', [
+    pack('different-pack', 2000, [{ ...item('instrument-version', 'instrument'), name: 'mic' }]),
+  ]), previous);
+  assert.equal(current.arrivals.value, 0);
+});
+
 test('a richer archive snapshot does not re-add retained bundles and their known contents', () => {
   const previous = shop('2026-10-02', [pack('persona', 3800, []), single('joker', 1800)]);
   previous.offers[0].id = JSON.stringify(['persona', 3800, []]);

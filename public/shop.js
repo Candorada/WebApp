@@ -97,6 +97,8 @@ export function normalizeShop(payload) {
       types,
       itemIds,
       itemTypes: Object.fromEntries(contents.map(({ group, item }) => [`${group}:${item.id.toLowerCase()}`, group === 'brItems' ? item.type?.value || 'other' : group === 'tracks' ? 'track' : group === 'instruments' ? 'instrument' : 'car'])),
+      itemNames: Object.fromEntries(contents.map(({ group, item }) => [`${group}:${item.id.toLowerCase()}`, item.name || item.title]).filter(([, name]) => name)),
+      itemImages: Object.fromEntries(contents.map(({ group, item }) => [`${group}:${item.id.toLowerCase()}`, item.images?.icon || item.albumArt || item.images?.large]).filter(([, url]) => typeof url === 'string')),
       isBundle,
       bundleOnly: Boolean(entry.cars?.length && !isBundle),
       price: entry.finalPrice,

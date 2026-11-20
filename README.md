@@ -51,8 +51,11 @@ can match more than one. The default calculation is bundle-adjusted.
 Category series travel with the cached, compressed timeline, so switching
 categories does not fetch individual snapshots or call the upstream provider.
 
-“New items only” compares cosmetic identities with the previous UTC shop day.
-Returning items count; repricing and changed offer IDs do not. A matching
+“New items only” compares names, image links and IDs with the previous UTC
+shop day. A match on any one identifies a repeat, including when an item moves
+between a standalone listing and bundle contents. Different items that share
+a name can also match. Returning items count when they were absent yesterday.
+A matching
 bundle is charged at its full price and replaces covered accessories. Mixed
 bundles are attributed to the categories of their newly added contents.
 Where contents are missing, stable listing IDs recognize offers that stayed

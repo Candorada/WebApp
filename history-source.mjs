@@ -49,6 +49,8 @@ export function archiveSnapshot(payload, date) {
         isBundle: Boolean(isBundle), bundleOnly: !isBundle && (included || isCar),
         itemIds, types: [...new Set(types)],
         itemTypes: Object.fromEntries(contents.filter(content => content.itemKey).map(content => [content.itemKey.toLowerCase(), category(content)])),
+        itemNames: Object.fromEntries(contents.filter(content => content.itemKey && content.name).map(content => [content.itemKey.toLowerCase(), content.name])),
+        itemImages: Object.fromEntries(contents.filter(content => content.itemKey && (content.image || content.images?.card)).map(content => [content.itemKey.toLowerCase(), content.image || content.images.card])),
         section: section.title || null, bundles: [],
         coverageUnknown: missingIdentity || (Boolean(isBundle) && !contents.length),
         items: contents.map(content => content.name).filter(Boolean),

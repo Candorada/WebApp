@@ -44,6 +44,12 @@ test('the app starts through the hosting CommonJS loader and serves its historic
     assert.equal(october.arrivals.value, 6700);
     const persona = october.snapshot.offers.find(offer => offer.name === 'Persona 5 Royal Bundle');
     assert.deepEqual(persona.arrivalTypes, []);
+    const august = await (await fetch(`http://127.0.0.1:${port}/api/history/2026-08-01`)).json();
+    assert.equal(august.arrivals.value, 65600);
+    for (const name of ['Lil World Mic', 'Bikini Bottom Kit']) {
+      const offer = august.snapshot.offers.find(offer => offer.name === name && offer.types.includes('instrument'));
+      assert.deepEqual(offer.arrivalTypes, []);
+    }
     assert.equal((await fetch(`http://127.0.0.1:${port}/public/arrivals.js`)).status, 200);
     const timeline = await (await fetch(`http://127.0.0.1:${port}/api/history?calculation=categories-v4`)).json();
     assert.ok(timeline.types.includes('outfit') && timeline.types.includes('car'));

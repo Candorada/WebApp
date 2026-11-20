@@ -34,7 +34,7 @@ function applyCategory() {
   $('history-heading').textContent = !types.length ? 'No categories selected' : tokenMode() ? `${subject} · 14-day token value` : newItemsOnly() ? `${subject} · daily additions` : `${subject} price history`;
   $('history-mode-note').textContent = tokenMode()
     ? 'Token value = the selected start day’s full shop + additions on the following 13 days. Returning items count again when re-added. New items only still controls the item list.'
-    : newItemsOnly() ? 'Daily additions are items absent from the previous UTC day, including returning items. Matching bundle prices count in full.' : '';
+    : newItemsOnly() ? 'Daily additions are items absent from the previous UTC day. A matching name, image, or ID counts as a repeat. Matching bundle prices count in full.' : '';
   $('history-mode-note').hidden = !tokenMode() && !newItemsOnly();
   $('history-category').value = category || (types.length ? 'all' : '');
   $('history-category-hint').hidden = types.length === 1;
