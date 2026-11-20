@@ -1,6 +1,6 @@
 import { selectOffers, typeLabel } from './shop.js';
 import { dateFromPath, datePath } from './date-route.js';
-import { arrivalOffers, arrivalCalculation } from './arrivals.js';
+import { arrivalOffers, arrivalCalculation, tokenDays, tokenOffers } from './arrivals.js';
 
 const $ = id => document.getElementById(id);
 const number = new Intl.NumberFormat('en-US');
@@ -13,6 +13,7 @@ try {
 let shop;
 let activeDate = null;
 let pending;
+let tokenLineup;
 const snapshots = new Map();
 const formatted = value => value === null ? '—' : number.format(value);
 export const visibleDate = () => activeDate || shop?.shopDate.slice(0, 10);
@@ -81,12 +82,12 @@ function renderTypes() {
   }
 }
 
-function offerCard(offer, coveredBy) {
+function offerCard(offer, coveredBy, date) {
   const article = document.createElement('article');
-  const excludedFromTotal = coveredBy || (!offer.isBundle && offer.bundleOnly);
+  const excludedFromTotal = !date && (coveredBy || (!offer.isBundle && offer.bundleOnly));
   article.className = excludedFromTotal ? 'offer covered' : 'offer';
   article.dataset.offerId = offer.id;
-  article.id = `offer-${offer.id}`;
+  article.id = `offer-${date ? `${date}-` : ''}${offer.id}`;
   article.tabIndex = -1;
   const art = document.createElement('div');
   art.className = 'offer-art';
@@ -104,7 +105,7 @@ function offerCard(offer, coveredBy) {
   const type = document.createElement('p');
   type.className = 'offer-type';
   type.textContent = `${offer.isBundle ? 'Bundle · ' : ''}${offer.types.filter(id => id !== 'bundle').map(typeLabel).join(' · ')}`;
-  const name = document.createElement('h3');
+  const name = document.createElement(date ? 'h4' : 'h3');
   name.textContent = offer.name;
   name.title = offer.items.join(', ');
   const price = document.createElement('div');
@@ -119,6 +120,20 @@ function offerCard(offer, coveredBy) {
     price.append(original);
   }
   info.append(type, name, price);
+  if (date && (offer.items.length > 1 || (offer.isBundle && offer.items.length))) {
+    const contents = document.createElement('details');
+    contents.className = 'offer-contents';
+    const title = document.createElement('summary');
+    title.textContent = 'Included items';
+    const list = document.createElement('ul');
+    for (const item of new Set(offer.items)) {
+      const row = document.createElement('li');
+      row.textContent = item;
+      list.append(row);
+    }
+    contents.append(title, list);
+    info.append(contents);
+  }
   if (offer.price === null) {
     const note = document.createElement('p');
     note.className = 'coverage-note';
@@ -138,7 +153,7 @@ function offerCard(offer, coveredBy) {
         link.addEventListener('click', event => {
           event.preventDefault();
           $('search').value = '';
-          renderOffers();
+          renderLineup();
           const target = document.getElementById(`offer-${bundle.id}`);
           target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           target?.focus({ preventScroll: true });
@@ -181,16 +196,126 @@ function renderOffers() {
   $('full-total').textContent = unavailable ? $('new-items-status').textContent : incomplete
     ? `${number.format(summary.unpricedCount)} counted listings have no archived price and are not included in this subtotal. The full buyout price may differ.`
     : `${number.format(omitted)} covered or bundle-only listings excluded.${all ? '' : ` ${arrivalsOnly ? 'All daily additions' : 'Full shop'}: ${formatted(arrivalsOnly ? shop.arrivals.value : shop.totals.value)} V-Bucks.`}`;
-  const query = $('search').value.trim().toLocaleLowerCase();
-  const offers = selection.selected.filter(offer => `${offer.name} ${offer.items.join(' ')}`.toLocaleLowerCase().includes(query));
+  if (!tokenLineup) renderLineup(selection);
+}
+
+const searchQuery = () => $('search').value.trim().toLocaleLowerCase();
+
+function matchingOffers(offers, query) {
   const sort = $('sort').value;
-  offers.sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : (a.price === null) - (b.price === null) || (sort === 'price-asc' ? a.price - b.price : b.price - a.price) || a.name.localeCompare(b.name));
+  return offers.filter(offer => !query || `${offer.name} ${offer.items.join(' ')}`.toLocaleLowerCase().includes(query))
+    .sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : (a.price === null) - (b.price === null) || (sort === 'price-asc' ? a.price - b.price : b.price - a.price) || a.name.localeCompare(b.name));
+}
+
+function renderLineup(selection) {
+  if (tokenLineup) { renderTokenLineup(tokenLineup); return; }
+  if (!shop) {
+    $('offers').replaceChildren();
+    $('showing').textContent = 'Loading offers…';
+    $('empty').hidden = true;
+    return;
+  }
+  selection ??= selectOffers(visibleOffers(), selectedTypes());
+  const query = searchQuery();
+  const offers = matchingOffers(selection.selected, query);
+  const count = selection.totals.count;
   $('offers').replaceChildren(...offers.map(offer => offerCard(offer, selection.coveredBy.get(offer.id))));
   $('offers').setAttribute('aria-busy', 'false');
-  $('showing').textContent = `${number.format(offers.length)} listings · ${number.format(summary.count)} counted · ${number.format(omitted)} grayed out${query ? ' · Search only filters this list' : ''}`;
+  $('showing').textContent = `${number.format(offers.length)} listings · ${number.format(count)} counted · ${number.format(selection.selected.length - count)} grayed out${query ? ' · Search only filters this list' : ''}`;
   $('empty').hidden = offers.length > 0;
-  $('empty').textContent = unavailable ? 'Turn off New items only to view this shop; the previous day is unavailable.'
+  $('empty').textContent = arrivalsOnly && !shop.arrivals?.available ? 'Turn off New items only to view this shop; the previous day is unavailable.'
     : arrivalsOnly ? 'No newly added items match this selection or search.' : 'No offers to show. Select an item type or change your search.';
+}
+
+function renderTokenLineup(lineup) {
+  const { date, days, shops, category, metric, hasTypes } = lineup;
+  const loading = !date || (hasTypes && days.length > 0 && !shops);
+  $('offers').setAttribute('aria-busy', String(loading));
+  const query = searchQuery();
+  const sections = [];
+  let count = 0;
+  let value = 0;
+  let available = 0;
+  if (hasTypes && shops) {
+    for (const [index, { date: day, arrivals }] of days.entries()) {
+      const snapshot = shops[index];
+      if (!snapshot || (arrivals && !snapshot.arrivals?.available)) continue;
+      available++;
+      const offers = tokenOffers(snapshot, arrivals, category, metric);
+      const subtotal = offers.reduce((sum, offer) => sum + (offer.price ?? 0), 0);
+      count += offers.length;
+      value += subtotal;
+      const matches = matchingOffers(offers, query);
+      if (!matches.length) continue;
+      const section = document.createElement('section');
+      section.className = 'token-day';
+      section.dataset.date = day;
+      const heading = document.createElement('h3');
+      heading.textContent = new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+      const label = document.createElement('p');
+      label.className = 'token-day-subtotal';
+      label.textContent = `${arrivals ? 'Daily additions' : 'Start-day shop'} · ${number.format(subtotal)} V-Bucks`;
+      const grid = document.createElement('div');
+      grid.className = 'offers';
+      grid.append(...matches.map(offer => offerCard(offer, undefined, day)));
+      section.append(heading, label, grid);
+      sections.push(section);
+    }
+  }
+  $('offers').replaceChildren(...sections);
+  const scope = category ? typeLabel(category) : 'Full shop';
+  $('showing').textContent = loading ? `Loading the ${tokenDays}-day lineup…` : !hasTypes ? 'No categories selected'
+    : `${scope} · ${number.format(count)} offers · ${number.format(value)} V-Bucks · ${available}/${tokenDays} days itemized${available < days.length ? ' · Some lists failed to load. Use Refresh to retry.' : ''}${query ? ' · Search only filters this list' : ''}`;
+  $('empty').hidden = loading || sections.length > 0;
+  $('empty').textContent = !hasTypes ? 'Select an item type to show offers.' : !available ? 'No item lists are available in this window.'
+    : query ? 'No token offers match this search.' : 'No offers contributed to this selection.';
+}
+
+export function setTokenLineup(plan) {
+  if (!plan) {
+    if (!tokenLineup) return;
+    tokenLineup.request?.abort();
+    tokenLineup = undefined;
+    renderLineup();
+    return;
+  }
+  const key = JSON.stringify([plan.date, plan.days]);
+  if (key !== tokenLineup?.key) {
+    tokenLineup?.request?.abort();
+    tokenLineup = { ...plan, key };
+  } else {
+    if (tokenLineup.category === plan.category && tokenLineup.metric === plan.metric && tokenLineup.hasTypes === plan.hasTypes) return;
+    Object.assign(tokenLineup, plan);
+  }
+  if (plan.hasTypes && plan.days.length && !tokenLineup.shops && !tokenLineup.request) loadTokenLineup(tokenLineup);
+  else renderLineup();
+}
+
+async function loadTokenLineup(lineup) {
+  lineup.request?.abort();
+  const request = new AbortController();
+  lineup.request = request;
+  lineup.shops = undefined;
+  renderLineup();
+  const results = await Promise.allSettled(lineup.days.map(({ date }) => archivedShop(date, request.signal)));
+  if (request.signal.aborted) return;
+  lineup.shops = results.map(result => result.status === 'fulfilled' ? result.value : null);
+  lineup.request = undefined;
+  renderLineup();
+}
+
+async function archivedShop(date, signal, refresh = false) {
+  if (!refresh && snapshots.has(date)) return snapshots.get(date);
+  const response = await fetch(`/api/history/${date}?calculation=${arrivalCalculation}`, { signal: AbortSignal.any([signal, AbortSignal.timeout(20000)]), cache: refresh ? 'reload' : 'default' });
+  if ([400, 404].includes(response.status)) return null;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Could not load the archived shop.');
+  if (!data.snapshot?.offers) throw new Error('The archived item list is unavailable.');
+  if (data.finalized) {
+    snapshots.set(date, data.snapshot);
+    if (snapshots.size > 32) snapshots.delete(snapshots.keys().next().value);
+  }
+  return data.snapshot;
 }
 
 async function loadShop(refresh = false) {
@@ -200,22 +325,18 @@ async function loadShop(refresh = false) {
   const date = activeDate;
   $('refresh').disabled = true;
   $('refresh').textContent = '↻ Loading…';
-  $('offers').setAttribute('aria-busy', 'true');
+  if (!tokenLineup) $('offers').setAttribute('aria-busy', 'true');
   try {
-    let result = date && snapshots.get(date);
-    if (!result || refresh) {
-      const response = await fetch(date ? `/api/history/${date}?calculation=${arrivalCalculation}` : '/api/shop', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]), cache: refresh ? 'reload' : 'default' });
-      const data = await response.json();
-      if (date && [400, 404].includes(response.status)) { navigateDate(null, { replace: true }); return; }
-      if (!response.ok) throw new Error(data.error || 'Could not refresh the shop.');
-      result = date ? data.snapshot : data;
-      if (!result?.offers) throw new Error('The archived item list is unavailable.');
-      if (date && data.finalized) {
-        snapshots.set(date, result);
-        if (snapshots.size > 12) snapshots.delete(snapshots.keys().next().value);
-      }
+    let result;
+    if (date) result = await archivedShop(date, controller.signal, refresh);
+    else {
+      const response = await fetch('/api/shop', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]), cache: refresh ? 'reload' : 'default' });
+      result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not refresh the shop.');
     }
     if (controller !== pending) return;
+    if (!result && date) { navigateDate(null, { replace: true }); return; }
+    if (!result?.offers) throw new Error('The item list is unavailable.');
     shop = result;
     const day = shop.shopDate.slice(0, 10);
     const displayDate = new Date(shop.shopDate).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -237,16 +358,15 @@ async function loadShop(refresh = false) {
     $('notice').textContent = `${error.name === 'TimeoutError' ? 'The request timed out. Try Refresh again.' : error.message}${shop ? ' Showing the previous result; it may be out of date.' : ''}`;
     if (!shop) {
       $('shop-date').textContent = 'Shop unavailable · Press Refresh to retry';
-      $('showing').textContent = 'Waiting for shop data';
       $('types').textContent = 'Item types will appear when the shop loads.';
-      $('offers').setAttribute('aria-busy', 'false');
+      if (!tokenLineup) $('showing').textContent = 'Waiting for shop data';
     }
   } finally {
     if (controller === pending) {
       pending = undefined;
       $('refresh').disabled = false;
       $('refresh').textContent = '↻ Refresh';
-      $('offers').setAttribute('aria-busy', 'false');
+      if (!tokenLineup) $('offers').setAttribute('aria-busy', 'false');
     }
   }
 }
@@ -263,23 +383,24 @@ export function navigateDate(date, { replace = false } = {}) {
     $('savings').textContent = '—';
     $('full-total').textContent = 'Loading the selected shop…';
     $('shop-date').textContent = date ? `Loading ${date}…` : 'Loading the live shop…';
-    $('showing').textContent = 'Loading offers…';
     $('types').replaceChildren();
-    $('offers').replaceChildren();
-    $('empty').hidden = true;
+    if (!tokenLineup) renderLineup();
   }
   announceDay();
   return loadShop();
 }
 
-$('refresh').addEventListener('click', () => loadShop(true));
+$('refresh').addEventListener('click', () => {
+  loadShop(true);
+  if (tokenLineup?.hasTypes && tokenLineup.days.length) loadTokenLineup(tokenLineup);
+});
 for (const home of document.querySelectorAll('a[href="/"]')) home.addEventListener('click', event => {
   if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
   event.preventDefault(); navigateDate(null);
 });
 window.addEventListener('popstate', () => navigateDate(dateFromPath(location.pathname), { replace: true }));
-$('search').addEventListener('input', renderOffers);
-$('sort').addEventListener('change', renderOffers);
+$('search').addEventListener('input', () => renderLineup());
+$('sort').addEventListener('change', () => renderLineup());
 $('new-items-only').addEventListener('change', () => {
   arrivalsOnly = $('new-items-only').checked;
   try { localStorage.setItem('fortnite-shop-new-items-only', arrivalsOnly ? '1' : '0'); } catch { /* Keep the current mode in memory. */ }

@@ -1,7 +1,7 @@
-import { navigateDate, visibleDate, selectedTypes, setAvailableTypes, selectCategory, newItemsOnly } from './app.js';
+import { navigateDate, visibleDate, selectedTypes, setAvailableTypes, selectCategory, newItemsOnly, setTokenLineup } from './app.js';
 import { typeLabel } from './shop.js';
 import { timeTicks } from './history-axis.js';
-import { tokenHistory, arrivalCalculation } from './arrivals.js';
+import { tokenDays, tokenHistory, tokenWindow, arrivalCalculation } from './arrivals.js';
 
 const $ = id => document.getElementById(id);
 const number = new Intl.NumberFormat('en-US');
@@ -9,6 +9,7 @@ const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
 const svgNS = 'http://www.w3.org/2000/svg';
 let points = [];
 let fullPoints = [];
+let historyByDate = new Map();
 let selectedDate;
 let visible = [];
 let chartBounds;
@@ -18,7 +19,16 @@ const unpriced = point => (metric() === 'value' ? point.unpricedCount : point.li
 const emptyTotals = { value: 0, count: 0, unpricedCount: 0, listedValue: 0, listedCount: 0, listedUnpricedCount: 0 };
 try { $('token-value').checked = localStorage.getItem('fortnite-shop-token-value') === '1'; } catch { /* The graph works without saved preferences. */ }
 const tokenMode = () => $('token-value').checked;
-const partialValue = point => unpriced(point) || (point.token && point.token.availableDays < 14);
+const partialValue = point => unpriced(point) || (point.token && point.token.availableDays < tokenDays);
+
+function updateTokenLineup(date) {
+  if (!tokenMode()) { setTokenLineup(null); return; }
+  const types = [...selectedTypes()];
+  const days = historyByDate.has(date) ? [...tokenWindow(historyByDate, date)].map(({ day, arrivals }) => ({
+    date: day.date, arrivals, capturedAt: day.capturedAt,
+  })) : [];
+  setTokenLineup({ date, days, category: types.length === 1 ? types[0] : null, hasTypes: types.length > 0, metric: metric() });
+}
 
 function applyCategory() {
   const types = [...selectedTypes()];
@@ -31,16 +41,17 @@ function applyCategory() {
   });
   if (!types.length) points = points.map(point => ({ ...point, ...emptyTotals }));
   const subject = category ? typeLabel(category) : 'Full shop';
-  $('history-heading').textContent = !types.length ? 'No categories selected' : tokenMode() ? `${subject} · 14-day token value` : newItemsOnly() ? `${subject} · daily additions` : `${subject} price history`;
+  $('history-heading').textContent = !types.length ? 'No categories selected' : tokenMode() ? `${subject} · ${tokenDays}-day token value` : newItemsOnly() ? `${subject} · daily additions` : `${subject} price history`;
   $('history-mode-note').textContent = tokenMode()
-    ? 'Token value = the selected start day’s full shop + additions on the following 13 days. Returning items count again when re-added. New items only still controls the item list.'
+    ? `The Lineup shows the start day’s shop and the items added on the following ${tokenDays - 1} days. Returning items count again when re-added.`
     : newItemsOnly() ? 'Daily additions are items absent from the previous UTC day. A matching name, image, or ID counts as a repeat. Matching bundle prices count in full.' : '';
   $('history-mode-note').hidden = !tokenMode() && !newItemsOnly();
   $('history-category').value = category || (types.length ? 'all' : '');
   $('history-category-hint').hidden = types.length === 1;
   $('history-category-hint').textContent = types.length > 1
     ? 'Select single category to compare value of specific item types.' : 'Select a category to compare its historical value.';
-  if (selectedDate) selectDate(selectedDate); else draw();
+  if (selectedDate) selectDate(selectedDate);
+  else { updateTokenLineup(); draw(); }
 }
 
 function element(tag, attrs = {}, text) {
@@ -58,7 +69,7 @@ function selectDate(date) {
   $('history-selected-date').textContent = displayDate(date);
   const point = points.find(point => point.date === date);
   $('history-value').textContent = point && !point.comparisonUnavailable ? number.format(point[metric()]) : '—';
-  $('history-unit').textContent = point?.comparisonUnavailable ? 'COMPARISON UNAVAILABLE' : point?.token?.availableDays < 14 ? 'V-BUCKS · PARTIAL WINDOW' : point && unpriced(point) ? 'V-BUCKS · KNOWN PRICES' : 'V-BUCKS';
+  $('history-unit').textContent = point?.comparisonUnavailable ? 'COMPARISON UNAVAILABLE' : point?.token?.availableDays < tokenDays ? 'V-BUCKS · PARTIAL WINDOW' : point && unpriced(point) ? 'V-BUCKS · KNOWN PRICES' : 'V-BUCKS';
   $('history-source').hidden = !point;
   if (!point) {
     $('history-detail').textContent = 'No complete price record for this date. A total has not been estimated.';
@@ -71,7 +82,7 @@ function selectDate(date) {
     if (point.comparisonUnavailable) {
       $('history-detail').textContent = point.arrivals?.reason || 'The previous day’s snapshot is unavailable.';
     } else if (point.token) {
-      $('history-detail').textContent = `${date} to ${point.token.endDate} · ${point.token.availableDays}/14 days available${unpriced(point) ? ` · ${unpriced(point)} unpriced listings excluded` : ''}${point.estimated ? ' · Some days use archive estimates' : ''}${point.token.availableDays < 14 ? ' · Future or missing days are not included in this known subtotal.' : ''}`;
+      $('history-detail').textContent = `${date} to ${point.token.endDate} · ${point.token.availableDays}/${tokenDays} days available${unpriced(point) ? ` · ${unpriced(point)} unpriced listings excluded` : ''}${point.estimated ? ' · Some days use archive estimates' : ''}${point.token.availableDays < tokenDays ? ' · Subtotal covers the available days.' : ''}`;
     } else if (unpriced(point)) {
       $('history-detail').textContent = `Known price subtotal · ${unpriced(point)} unpriced listings excluded · ${timing} · Possible mistakes for this day`;
     } else {
@@ -80,6 +91,7 @@ function selectDate(date) {
     }
   }
   if (chartBounds && point && (timestamp(date) < chartBounds.first || timestamp(date) > chartBounds.last)) $('history-range').value = 'all';
+  updateTokenLineup(date);
   draw();
 }
 
@@ -141,7 +153,7 @@ function draw() {
     }
     if (partialValue(point)) {
       const marker = element('circle', { cx: x(point), cy: y(point), r: 2.5, class: 'history-fallback' });
-      marker.append(element('title', {}, `${point.date}: ${number.format(point[metric()])} V-Bucks known subtotal${point.token ? `; ${point.token.availableDays}/14 days` : `; ${unpriced(point)} unpriced listings`}`));
+      marker.append(element('title', {}, `${point.date}: ${number.format(point[metric()])} V-Bucks known subtotal${point.token ? `; ${point.token.availableDays}/${tokenDays} days` : `; ${unpriced(point)} unpriced listings`}`));
       chart.append(marker);
     }
     const gap = previous && timestamp(point.date) - timestamp(previous.date) > 86400000;
@@ -199,6 +211,7 @@ async function loadHistory() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'History could not be loaded.');
     fullPoints = data.points;
+    historyByDate = new Map(fullPoints.map(point => [point.date, point]));
     const control = $('history-category');
     control.replaceChildren(new Option('Full shop', 'all'), new Option('No categories selected', ''));
     control.options[1].hidden = true;
@@ -216,5 +229,6 @@ async function loadHistory() {
     selectDate(visibleDate() || data.latest);
   } catch (error) { $('history-status').textContent = `History unavailable: ${error.message}`; }
 }
+if (tokenMode()) updateTokenLineup();
 loadHistory();
 setInterval(() => { if (!document.hidden) loadHistory(); }, 300000);

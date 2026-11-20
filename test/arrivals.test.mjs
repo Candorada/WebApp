@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeShop, selectOffers } from '../public/shop.js';
-import { annotateArrivals, arrivalOffers, dayAfter, tokenHistory, emptySummary } from '../public/arrivals.js';
+import { annotateArrivals, arrivalOffers, dayAfter, tokenHistory, tokenOffers, tokenWindow, emptySummary } from '../public/arrivals.js';
 
 const item = (id, type = 'outfit') => ({ id, name: id, type: { value: type } });
 const single = (id, price, type = 'outfit') => ({ offerId: `listing-${id}-${price}`, finalPrice: price, brItems: [item(id, type)] });
@@ -124,4 +124,19 @@ test('token value is the starting shop plus exactly 13 following daily additions
   const partial = tokenHistory(points)[0];
   assert.equal(partial.token.availableDays, 13);
   assert.equal(partial.value, 1840);
+  const days = [...tokenWindow(new Map(points.map(point => [point.date, point])), points[0].date)];
+  assert.equal(days.length, partial.token.availableDays);
+  assert.equal(days[0].arrivals, false);
+  assert.equal(days.at(-1).day.date, partial.token.endDate);
+  assert.ok(days.slice(1).every(({ day, arrivals }) => arrivals && day.arrivals.available));
+});
+
+test('token itemization uses the same categories and price modes as the graph', () => {
+  const pack = { offerId: 'pack', finalPrice: 2000, bundle: { name: 'pack' }, brItems: [item('outfit'), item('axe', 'pickaxe')] };
+  const start = shop('2026-10-01', [single('outfit', 1500), single('axe', 800, 'pickaxe'), pack]);
+  const next = shop('2026-10-02', [single('outfit', 1500), single('dance', 500, 'emote')]);
+  annotateArrivals(next, start);
+  assert.deepEqual(tokenOffers(start, false, 'pickaxe', 'value').map(offer => offer.name), ['pack']);
+  assert.deepEqual(tokenOffers(start, false, 'pickaxe', 'listedValue').map(offer => offer.name), ['axe', 'pack']);
+  assert.deepEqual(tokenOffers(next, true, null, 'value').map(offer => offer.name), ['dance']);
 });

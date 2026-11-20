@@ -137,6 +137,23 @@ export function annotateArrivals(shop, previous) {
   return shop;
 }
 
+export const tokenDays = 14;
+
+export function* tokenWindow(byDate, startDate) {
+  for (let offset = 0; offset < tokenDays; offset++) {
+    const day = byDate.get(dayAfter(startDate, offset));
+    const arrivals = offset > 0;
+    const source = arrivals ? (day?.arrivals?.available ? day.arrivals : null) : day;
+    if (source) yield { day, arrivals, source };
+  }
+}
+
+export function tokenOffers(shop, arrivals, category, metric) {
+  const offers = arrivals ? arrivalOffers(shop.offers) : shop.offers;
+  const selection = selectOffers(offers, category ? new Set([category]) : undefined);
+  return metric === 'listedValue' ? selection.selected : selection.counted;
+}
+
 export function tokenHistory(points, category) {
   const byDate = new Map(points.map(point => [point.date, point]));
   const summary = point => category ? point.categories?.[category] || emptySummary : point;
@@ -144,15 +161,12 @@ export function tokenHistory(points, category) {
     const value = { ...emptySummary };
     let availableDays = 0;
     let estimated = Boolean(point.qualityReason);
-    for (let offset = 0; offset < 14; offset++) {
-      const day = byDate.get(dayAfter(point.date, offset));
-      const source = !offset ? day : day?.arrivals?.available ? day.arrivals : null;
-      if (!source) continue;
+    for (const { day, source } of tokenWindow(byDate, point.date)) {
       const stats = summary(source);
       for (const key of Object.keys(emptySummary)) value[key] += stats[key] || 0;
       availableDays++;
       estimated ||= Boolean(source.estimated || day.qualityReason);
     }
-    return { ...point, ...value, estimated, token: { endDate: dayAfter(point.date, 13), availableDays } };
+    return { ...point, ...value, estimated, token: { endDate: dayAfter(point.date, tokenDays - 1), availableDays } };
   });
 }
