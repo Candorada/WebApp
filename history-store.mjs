@@ -2,8 +2,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { categoryTotals } from './public/shop.js';
+import { categoryTotals, totals, typeLabel } from './public/shop.js';
 import { annotateArrivals, dayAfter, arrivalCalculation } from './public/arrivals.js';
+
+// The live feed confirms this offer as a bundle in its billboard text, which older snapshots omitted.
+const pirateMikuBundleId = 'v2:/8f114946b8d166af6a3f7ae3ed7b1ae75c6a1e9c1d9508c258080c01d88a2365';
 
 export function validDate(date) {
   return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
@@ -48,8 +51,19 @@ export class HistoryStore {
       const rows = this.db.prepare('SELECT date FROM shops WHERE payload IS NOT NULL AND (arrival_totals IS NULL OR ?) ORDER BY date')
         .all(Number(previous !== arrivalCalculation));
       const save = this.db.prepare('UPDATE shops SET arrival_totals=?,payload=? WHERE date=?');
+      const saveCorrectedTotals = this.db.prepare('UPDATE shops SET value=?,count=?,category_totals=? WHERE date=?');
       for (const { date } of rows) {
-        const shop = this.prepareShop(this.snapshot(date));
+        const shop = this.snapshot(date);
+        const missingBundle = shop.offers.find(offer => offer.id === pirateMikuBundleId && !offer.isBundle);
+        if (missingBundle) {
+          Object.assign(missingBundle, {
+            name: "Cap'n Hatsune Miku Bundle", isBundle: true, type: 'bundle',
+            typeLabel: typeLabel('bundle'), types: [...missingBundle.types, 'bundle'],
+          });
+          shop.totals = totals(shop.offers);
+          saveCorrectedTotals.run(shop.totals.value, shop.totals.count, JSON.stringify(categoryTotals(shop.offers)), date);
+        }
+        this.prepareShop(shop);
         save.run(JSON.stringify(shop.arrivals), gzipSync(JSON.stringify(shop)), date);
       }
       this.db.prepare("INSERT OR REPLACE INTO metadata VALUES('arrival_calculation',?)").run(arrivalCalculation);

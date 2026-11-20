@@ -1,7 +1,7 @@
 import { selectOffers, categoryTotals } from './shop.js';
 
 export const emptySummary = { value: 0, count: 0, unpricedCount: 0, listedValue: 0, listedCount: 0, listedUnpricedCount: 0 };
-export const arrivalCalculation = 'daily-arrivals-v7';
+export const arrivalCalculation = 'daily-arrivals-v8';
 export const dayAfter = (date, offset = 1) => new Date(Date.parse(date.slice(0, 10) + 'T00:00:00Z') + offset * 86400000).toISOString().slice(0, 10);
 export const itemIdentity = id => id.toLowerCase().replace(/^(?:fn:(?:item|track|instrument|car):|britems:|tracks:|instruments:|cars:)/, '');
 

@@ -131,6 +131,59 @@ test('live category captures preserve bundle adjustment and backfill existing st
   }
 });
 
+test('billboard bundle metadata replaces covered offers in new and saved shops', async () => {
+  const date = '2026-11-15';
+  const outfit = { id: 'character_peonypizza', name: "Cap'n Hatsune Miku", type: { value: 'outfit' } };
+  const backBling = { id: 'backpack_peonypizza', name: "Miku's Treasure", type: { value: 'backpack' } };
+  const emote = { id: 'eid_peonypizza', name: 'Miku Miku ni Shite Ageru♪', type: { value: 'emote' } };
+  const pack = {
+    offerId: 'v2:/8f114946b8d166af6a3f7ae3ed7b1ae75c6a1e9c1d9508c258080c01d88a2365',
+    finalPrice: 2200, brItems: [outfit, backBling, emote],
+  };
+  const otherOffers = [
+    { offerId: 'outfit', finalPrice: 1500, brItems: [outfit, backBling] },
+    { offerId: 'back-bling', finalPrice: 400, brItems: [backBling] },
+    { offerId: 'emote', finalPrice: 500, brItems: [emote] },
+  ];
+  const snapshot = bundle => normalizeShop({ status: 200, data: { date: `${date}T00:00:00Z`, entries: [bundle, ...otherOffers] } });
+  const assertBundle = shop => {
+    const selection = selectOffers(shop.offers);
+    assert.equal(shop.totals.value, 2200);
+    assert.equal(selection.counted[0].name, "Cap'n Hatsune Miku Bundle");
+    assert.equal(selection.coveredBy.get('outfit')[0].id, pack.offerId);
+    assert.equal(selection.coveredBy.get('back-bling')[0].id, pack.offerId);
+    assert.equal(selection.coveredBy.get('emote')[0].id, pack.offerId);
+    assert.equal(shop.offers[1].isBundle, false);
+    assert.equal(selectOffers(shop.offers, new Set(['emote'])).totals.value, 2200);
+  };
+  assertBundle(snapshot({ ...pack, layout: { displayType: 'billboard', textMetadata: [
+    { key: 'subtitle', value: '6 Item Bundle' }, { key: 'title', value: outfit.name },
+  ] } }));
+
+  const directory = await mkdtemp(join(tmpdir(), 'fortnite-billboard-test-'));
+  const filename = join(directory, 'history.sqlite');
+  let store = new HistoryStore(filename);
+  try {
+    store.recordLive(live('2026-11-14', 0), new Date('2026-11-14T23:00:00Z'));
+    store.recordLive(snapshot(pack), new Date(`${date}T23:00:00Z`));
+    assert.equal(store.get(date).value, 4600);
+    store.db.prepare("UPDATE metadata SET value='daily-arrivals-v7' WHERE key='arrival_calculation'").run();
+    store.close();
+    store = new HistoryStore(filename);
+    assertBundle(store.snapshot(date));
+    const row = store.get(date);
+    assert.equal(row.value, 2200);
+    assert.equal(row.arrivals.value, 2200);
+    assert.equal(row.categories.emote.value, 2200);
+    assert.equal(row.listedValue, 4600);
+    assert.equal(row.finalized, 1);
+  } finally {
+    store.close();
+    if (!resolve(directory).startsWith(resolve(tmpdir()) + sep)) throw new Error('Unsafe temporary cleanup path.');
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('dates reject impossible calendar days', () => {
   assert.equal(validDate('2026-02-31'), false);
   assert.equal(validDate('2017-10-26'), true);

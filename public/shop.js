@@ -78,20 +78,27 @@ export function normalizeShop(payload) {
     }
     const items = contents.map(({ item }) => item);
     const itemIds = [...new Set(contents.map(({ group, item }) => `${group}:${item.id.toLowerCase()}`))];
-    const isBundle = Boolean(entry.bundle);
+    const billboardText = entry.layout?.displayType === 'billboard' && Array.isArray(entry.layout.textMetadata)
+      ? entry.layout.textMetadata : [];
+    const subtitle = billboardText.find(({ key }) => key === 'subtitle')?.value;
+    const billboardBundle = itemIds.length > 1 && typeof subtitle === 'string' && /^\d+ items? bundle$/i.test(subtitle.trim());
+    const isBundle = Boolean(entry.bundle) || billboardBundle;
     const types = [...new Set(contents.map(({ group, item }) => group === 'brItems' ? item.type?.value || 'other'
       : group === 'tracks' ? 'track' : group === 'instruments' ? 'instrument' : 'car'))];
     if (isBundle) types.push('bundle');
     if (!types.length) types.push('other');
     const first = items[0];
-    const type = entry.bundle ? 'bundle'
+    const title = (billboardBundle && billboardText.find(({ key }) => key === 'title')?.value)
+      || first?.name || first?.title || 'Unnamed offer';
+    const name = entry.bundle?.name || (billboardBundle && !/\bbundle\b/i.test(title) ? `${title} Bundle` : title);
+    const type = isBundle ? 'bundle'
       : entry.brItems?.[0]?.type?.value || (entry.tracks?.length ? 'track'
       : entry.instruments?.length ? 'instrument' : entry.cars?.length ? 'car' : 'other');
     const image = entry.bundle?.image || entry.newDisplayAsset?.renderImages?.[0]?.image
       || first?.images?.featured || first?.images?.icon || first?.images?.large || first?.albumArt;
     unique.set(entry.offerId, {
       id: entry.offerId,
-      name: entry.bundle?.name || first?.name || first?.title || 'Unnamed offer',
+      name,
       type,
       typeLabel: labels[type] || first?.type?.displayValue || type,
       types,
