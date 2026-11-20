@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { normalizeShop } from './public/shop.js';
 import { HistoryStore, validDate, captureDue } from './history-store.mjs';
 import { dateFromPath, datePath } from './public/date-route.js';
-import { annotateArrivals } from './public/arrivals.js';
+import { annotateArrivals, arrivalCalculation } from './public/arrivals.js';
 
 const host = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 const port = Number(process.env.PORT || 3000);
@@ -65,7 +65,7 @@ function serveHistory(request, response) {
   if (!historyResponse || historyResponse.revision !== history.revision) {
     const points = history.list();
     const types = [...new Set(points.flatMap(point => Object.keys(point.categories)))].sort();
-    const body = Buffer.from(JSON.stringify({ points, types, earliest: points[0]?.date || null, latest: points.at(-1)?.date || null, gapCount: history.gapCount(), captureHourUTC: 23, calculation: 'daily-arrivals-v5' }));
+    const body = Buffer.from(JSON.stringify({ points, types, earliest: points[0]?.date || null, latest: points.at(-1)?.date || null, gapCount: history.gapCount(), captureHourUTC: 23, calculation: arrivalCalculation }));
     historyResponse = { revision: history.revision, body, gzip: gzipSync(body), etag: 'W/"' + createHash('sha256').update(body).digest('hex') + '"' };
   }
   response.setHeader('Cache-Control', 'private, max-age=300, must-revalidate');

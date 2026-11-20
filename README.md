@@ -55,8 +55,10 @@ categories does not fetch individual snapshots or call the upstream provider.
 Returning items count; repricing and changed offer IDs do not. A matching
 bundle is charged at its full price and replaces covered accessories. Mixed
 bundles are attributed to the categories of their newly added contents.
-Where contents are missing, section membership and stable listing identities
-provide an explicitly estimated comparison. Missing previous snapshots produce
+Where contents are missing, stable listing IDs recognize offers that stayed
+in the shop. A matched listing can supply item IDs for a sparse previous
+snapshot. Section membership can estimate the contents of newly added
+bundles. Missing previous snapshots produce
 an unavailable comparison rather than treating every item as new.
 
 The graph-only “14-day token value” uses the selected date's full shop value

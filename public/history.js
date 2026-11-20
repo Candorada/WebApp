@@ -1,7 +1,7 @@
 import { navigateDate, visibleDate, selectedTypes, setAvailableTypes, selectCategory, newItemsOnly } from './app.js';
 import { typeLabel } from './shop.js';
 import { timeTicks } from './history-axis.js';
-import { tokenHistory } from './arrivals.js';
+import { tokenHistory, arrivalCalculation } from './arrivals.js';
 
 const $ = id => document.getElementById(id);
 const number = new Intl.NumberFormat('en-US');
@@ -71,7 +71,7 @@ function selectDate(date) {
     if (point.comparisonUnavailable) {
       $('history-detail').textContent = point.arrivals?.reason || 'The previous day’s snapshot is unavailable.';
     } else if (point.token) {
-      $('history-detail').textContent = `${date} to ${point.token.endDate} · ${point.token.availableDays}/14 days available${unpriced(point) ? ` · ${unpriced(point)} unpriced listings excluded` : ''}${point.token.availableDays < 14 ? ' · Future or missing days are not included in this known subtotal.' : ''}`;
+      $('history-detail').textContent = `${date} to ${point.token.endDate} · ${point.token.availableDays}/14 days available${unpriced(point) ? ` · ${unpriced(point)} unpriced listings excluded` : ''}${point.estimated ? ' · Some days use archive estimates' : ''}${point.token.availableDays < 14 ? ' · Future or missing days are not included in this known subtotal.' : ''}`;
     } else if (unpriced(point)) {
       $('history-detail').textContent = `Known price subtotal · ${unpriced(point)} unpriced listings excluded · ${timing} · Possible mistakes for this day`;
     } else {
@@ -195,7 +195,7 @@ document.addEventListener('shop:navigation', event => {
 
 async function loadHistory() {
   try {
-    const response = await fetch('/api/history?calculation=daily-arrivals-v5');
+    const response = await fetch(`/api/history?calculation=${arrivalCalculation}`);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'History could not be loaded.');
     fullPoints = data.points;

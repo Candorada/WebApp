@@ -40,6 +40,43 @@ test('unknown-content bundles use stable listing identities rather than their ch
   assert.equal(after.arrivals.value, 0);
 });
 
+test('a richer archive snapshot does not re-add retained bundles and their known contents', () => {
+  const previous = shop('2026-10-02', [pack('persona', 3800, []), single('joker', 1800)]);
+  previous.offers[0].id = JSON.stringify(['persona', 3800, []]);
+  previous.offers[1].id = JSON.stringify(['joker', 1800, []]);
+  previous.offers[1].itemIds = [];
+  const current = shop('2026-10-03', [
+    pack('persona', 3700, [item('joker'), item('persona-axe', 'pickaxe')]),
+    single('joker', 1800),
+    single('new-axe', 800, 'pickaxe'),
+  ]);
+  current.offers[0].id = JSON.stringify(['persona', 3700, current.offers[0].itemIds]);
+  annotateArrivals(current, previous);
+  assert.equal(current.arrivals.value, 800);
+  assert.equal(current.arrivals.estimated, true);
+  assert.deepEqual(arrivalOffers(current.offers).map(offer => offer.name), ['new-axe']);
+});
+
+test('sparse current listings recognize known items, and old bundles do not inherit inferred additions', () => {
+  const previous = shop('2026-10-02', [pack('existing', 3000, [item('joker')])]);
+  const current = shop('2026-10-03', [pack('existing', 3000, []), single('joker', 1800), single('new-axe', 800, 'pickaxe')]);
+  current.offers[1].id = JSON.stringify(['joker', 1800, []]);
+  current.offers[1].itemIds = [];
+  current.offers[2].bundles = ['existing'];
+  annotateArrivals(current, previous);
+  assert.deepEqual(arrivalOffers(current.offers).map(offer => offer.name), ['new-axe']);
+  assert.equal(current.arrivals.value, 800);
+});
+
+test('a retained bundle can still contain real additions when both days have contents', () => {
+  const previous = shop('2026-10-02', [pack('existing', 3000, [item('joker')])]);
+  const current = annotateArrivals(shop('2026-10-03', [
+    pack('existing', 3000, [item('joker'), item('new-axe', 'pickaxe')]),
+  ]), previous);
+  assert.equal(current.arrivals.value, 3000);
+  assert.equal(current.arrivals.categories.pickaxe.value, 3000);
+});
+
 test('missing previous days are unavailable comparisons rather than all-new shops or zero totals', () => {
   const current = annotateArrivals(shop('2026-11-20', [single('skin', 1500)]), shop('2026-11-18', []));
   assert.equal(current.arrivals.available, false);

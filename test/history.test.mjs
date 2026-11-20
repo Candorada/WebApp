@@ -117,6 +117,13 @@ test('live category captures preserve bundle adjustment and backfill existing st
     assert.equal(store.get('2026-11-06').arrivals.available, true);
     assert.equal(store.get('2026-11-06').arrivals.categories.outfit.value, 2000);
     assert.equal(store.get('2026-11-06').finalized, 1);
+    store.db.prepare("UPDATE metadata SET value='daily-arrivals-v5' WHERE key='arrival_calculation'").run();
+    store.db.prepare("UPDATE shops SET arrival_totals=? WHERE date='2026-11-06'").run(JSON.stringify({ value: 90000 }));
+    store.close();
+    store = new HistoryStore(filename);
+    assert.equal(store.get('2026-11-06').arrivals.value, 2000);
+    assert.equal(store.snapshot('2026-11-06').arrivals.value, 2000);
+    assert.equal(store.get('2026-11-06').finalized, 1);
   } finally {
     store.close();
     if (!resolve(directory).startsWith(resolve(tmpdir()) + sep)) throw new Error('Unsafe temporary cleanup path.');

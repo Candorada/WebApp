@@ -1,12 +1,23 @@
 import { selectOffers, categoryTotals } from './shop.js';
 
 export const emptySummary = { value: 0, count: 0, unpricedCount: 0, listedValue: 0, listedCount: 0, listedUnpricedCount: 0 };
+export const arrivalCalculation = 'daily-arrivals-v6';
 export const dayAfter = (date, offset = 1) => new Date(Date.parse(date.slice(0, 10) + 'T00:00:00Z') + offset * 86400000).toISOString().slice(0, 10);
 export const itemIdentity = id => id.toLowerCase().replace(/^(?:fn:(?:item|track|instrument|car):|britems:|tracks:|instruments:|cars:)/, '');
 
 function listingIdentity(offer) {
   try { const parts = JSON.parse(offer.id); if (Array.isArray(parts)) return String(parts[0]).toLowerCase(); } catch { /* Live offer IDs are plain strings. */ }
   return offer.id.toLowerCase();
+}
+
+function groupListings(offers) {
+  const groups = new Map();
+  for (const offer of offers) {
+    const id = listingIdentity(offer);
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(offer);
+  }
+  return groups;
 }
 
 function itemType(offer, id) {
@@ -39,8 +50,21 @@ export function annotateArrivals(shop, previous) {
     return shop;
   }
   const previousItems = new Set(previous.offers.flatMap(offer => offer.itemIds.map(itemIdentity)));
-  const previousListings = new Set(previous.offers.map(listingIdentity));
+  const previousListings = groupListings(previous.offers);
   let estimated = previous.offers.some(offer => offer.coverageUnknown);
+  for (const offer of previous.offers) {
+    if (!offer.isBundle && !offer.itemIds.length) previousItems.add(itemIdentity(listingIdentity(offer)));
+  }
+  // A richer snapshot can reveal contents for a listing that was already present.
+  for (const [id, offers] of groupListings(shop.offers)) {
+    const matches = previousListings.get(id);
+    if (offers.length !== 1 || matches?.length !== 1) continue;
+    const old = matches[0];
+    const current = offers[0];
+    if (old.isBundle !== current.isBundle || old.itemIds.length || !current.itemIds.length) continue;
+    for (const itemId of current.itemIds) previousItems.add(itemIdentity(itemId));
+    estimated = true;
+  }
   for (const offer of shop.offers) {
     const added = offer.itemIds.filter(id => !previousItems.has(itemIdentity(id)));
     for (const id of added) {
@@ -49,15 +73,21 @@ export function annotateArrivals(shop, previous) {
       else { offer.arrivalTypes.push(...offer.types.filter(type => type !== 'bundle')); estimated = true; }
     }
     if (added.length && offer.isBundle) offer.arrivalTypes.push('bundle');
-    if (!offer.isBundle && !offer.itemIds.length && !previousListings.has(listingIdentity(offer))) {
-      offer.arrivalTypes.push(...offer.types); estimated = true;
+    if (!offer.isBundle && !offer.itemIds.length) {
+      const id = listingIdentity(offer);
+      if (!previousListings.has(id) && !previousItems.has(itemIdentity(id))) {
+        offer.arrivalTypes.push(...offer.types);
+        estimated = true;
+      }
     }
   }
   for (const bundle of shop.offers.filter(offer => offer.isBundle)) {
+    if (bundle.itemIds.length && !bundle.coverageUnknown) continue;
+    if (previousListings.has(listingIdentity(bundle))) continue;
     const related = shop.offers.filter(offer => !offer.isBundle && offer.bundles?.includes(bundle.id));
     const newTypes = related.flatMap(offer => offer.arrivalTypes);
     if (newTypes.length) { bundle.arrivalTypes.push(...newTypes, 'bundle'); estimated = true; }
-    else if (!bundle.itemIds.length && !related.length && !previousListings.has(listingIdentity(bundle))) {
+    else if (!bundle.itemIds.length && !related.length) {
       bundle.arrivalTypes.push(...bundle.types); estimated = true;
     }
   }

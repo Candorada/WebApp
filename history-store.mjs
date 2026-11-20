@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { categoryTotals } from './public/shop.js';
-import { annotateArrivals, dayAfter } from './public/arrivals.js';
+import { annotateArrivals, dayAfter, arrivalCalculation } from './public/arrivals.js';
 
 export function validDate(date) {
   return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
@@ -37,12 +37,24 @@ export class HistoryStore {
     for (const row of this.db.prepare("SELECT date FROM shops WHERE category_totals='{}' AND payload IS NOT NULL").all()) {
       saveCategories.run(JSON.stringify(categoryTotals(this.snapshot(row.date).offers)), row.date);
     }
-    const saveArrivals = this.db.prepare('UPDATE shops SET arrival_totals=?,payload=? WHERE date=?');
-    for (const row of this.db.prepare('SELECT date FROM shops WHERE arrival_totals IS NULL AND payload IS NOT NULL ORDER BY date').all()) {
-      const shop = this.prepareShop(this.snapshot(row.date));
-      saveArrivals.run(JSON.stringify(shop.arrivals), gzipSync(JSON.stringify(shop)), row.date);
-    }
+    this.backfillArrivals();
     this.revision = 0;
+  }
+
+  backfillArrivals() {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const previous = this.db.prepare("SELECT value FROM metadata WHERE key='arrival_calculation'").get()?.value;
+      const rows = this.db.prepare('SELECT date FROM shops WHERE payload IS NOT NULL AND (arrival_totals IS NULL OR ?) ORDER BY date')
+        .all(Number(previous !== arrivalCalculation));
+      const save = this.db.prepare('UPDATE shops SET arrival_totals=?,payload=? WHERE date=?');
+      for (const { date } of rows) {
+        const shop = this.prepareShop(this.snapshot(date));
+        save.run(JSON.stringify(shop.arrivals), gzipSync(JSON.stringify(shop)), date);
+      }
+      this.db.prepare("INSERT OR REPLACE INTO metadata VALUES('arrival_calculation',?)").run(arrivalCalculation);
+      this.db.exec('COMMIT');
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
 
   importSeed(seed) {

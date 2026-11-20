@@ -1,6 +1,6 @@
 import { selectOffers, typeLabel } from './shop.js';
 import { dateFromPath, datePath } from './date-route.js';
-import { arrivalOffers } from './arrivals.js';
+import { arrivalOffers, arrivalCalculation } from './arrivals.js';
 
 const $ = id => document.getElementById(id);
 const number = new Intl.NumberFormat('en-US');
@@ -204,7 +204,7 @@ async function loadShop(refresh = false) {
   try {
     let result = date && snapshots.get(date);
     if (!result || refresh) {
-      const response = await fetch(date ? `/api/history/${date}?calculation=daily-arrivals-v5` : '/api/shop', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]), cache: refresh ? 'reload' : 'default' });
+      const response = await fetch(date ? `/api/history/${date}?calculation=${arrivalCalculation}` : '/api/shop', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]), cache: refresh ? 'reload' : 'default' });
       const data = await response.json();
       if (date && [400, 404].includes(response.status)) { navigateDate(null, { replace: true }); return; }
       if (!response.ok) throw new Error(data.error || 'Could not refresh the shop.');

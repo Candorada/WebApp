@@ -40,10 +40,15 @@ test('the app starts through the hosting CommonJS loader and serves its historic
     assert.equal(nextDay.arrivals.value, 3300);
     assert.equal(nextDay.arrivals.comparisonDate, '2017-10-26');
     assert.equal(nextDay.snapshot.offers.filter(offer => offer.arrivalTypes.length).length, 4);
+    const october = await (await fetch(`http://127.0.0.1:${port}/api/history/2026-10-03`)).json();
+    assert.equal(october.arrivals.value, 6700);
+    const persona = october.snapshot.offers.find(offer => offer.name === 'Persona 5 Royal Bundle');
+    assert.deepEqual(persona.arrivalTypes, []);
     assert.equal((await fetch(`http://127.0.0.1:${port}/public/arrivals.js`)).status, 200);
     const timeline = await (await fetch(`http://127.0.0.1:${port}/api/history?calculation=categories-v4`)).json();
     assert.ok(timeline.types.includes('outfit') && timeline.types.includes('car'));
     assert.equal(timeline.points.find(point => point.date === '2017-10-26').categories.glider.value, 500);
+    assert.equal(timeline.points.find(point => point.date === '2026-10-03').arrivals.value, 6700);
     const mayShop = await (await fetch(`http://127.0.0.1:${port}/api/history/2026-05-07`)).json();
     const bundleOffers = mayShop.snapshot.offers.filter(offer => offer.isBundle);
     assert.equal(bundleOffers.length, 28);
